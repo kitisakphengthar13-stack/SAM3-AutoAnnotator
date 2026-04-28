@@ -1,0 +1,63 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python tooling/cache
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Build/distribution
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# IDE/editor
+.idea/
+.vscode/
+
+# Environment/secrets
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Project outputs
+outputs/*
+!outputs/.gitkeep
+
+# Local datasets / media
+data/
+datasets/
+images/
+videos/
+
+# Model weights / ML artifacts
+models/
+weights/
+*.pt
+*.pth
+*.onnx
+*.engine
+*.tflite
+*.pb
+*.ckpt
+*.safetensors
+
+# Jupyter
+.ipynb_checkpoints/
