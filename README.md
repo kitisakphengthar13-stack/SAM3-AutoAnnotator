@@ -8,6 +8,14 @@ SAM3-AutoAnnotator runs SAM3 segmentation on a single image or an image folder, 
 
 ---
 
+## Demo
+
+Youtube Demo:
+
+[Watch Demo on YouTube](https://www.youtube.com/watch?v=2rhbMr5g6Lg)
+
+---
+
 ## Overview
 
 SAM3-AutoAnnotator is designed for users who want to turn SAM3 prediction results into reusable annotation outputs.
@@ -46,14 +54,6 @@ This project does not train, fine-tune, or reimplement SAM3. It uses SAM3 predic
 SAM3 = foundation segmentation model
 SAM3-AutoAnnotator = CLI workflow tool for organizing and exporting SAM3 prediction outputs
 ```
-
----
-
-## Watch Demo
-
-Watch the demo video here:
-
-[Watch Demo on YouTube](https://www.youtube.com/watch?v=2rhbMr5g6Lg)
 
 ---
 
