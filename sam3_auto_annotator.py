@@ -21,7 +21,7 @@ def parse_args():
     )
     parser.add_argument(
         "--input",
-        default=r"C:\Users\Asus\Desktop\siamese_cat.jpg",
+        required=True,
         help="Path to one image file or a folder of images.",
     )
     parser.add_argument(
@@ -32,7 +32,7 @@ def parse_args():
     )
     parser.add_argument(
         "--model",
-        default=r"D:\data_use\model\segment_anything\sam3.pt",
+        required=True,
         help="Path to the SAM3 model file.",
     )
     parser.add_argument("--conf", type=float, default=0.7, help="Confidence threshold.")
@@ -492,5 +492,5 @@ if __name__ == "__main__":
 
 
 # Example commands:
-# python text_promt.py --input "C:\Users\Asus\Desktop\siamese_cat.jpg" --text "siamese cat"
-# python text_promt.py --input "D:\data_use\images" --text "siamese cat" dog car --project-name sample_run
+# python sam3_auto_annotator.py --input "path\to\image.jpg" --model "path\to\sam3.pt" --text "siamese cat"
+# python sam3_auto_annotator.py --input "path\to\images" --model "path\to\sam3.pt" --text "siamese cat" dog car --project-name sample_run
