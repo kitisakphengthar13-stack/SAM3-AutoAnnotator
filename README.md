@@ -12,7 +12,7 @@ SAM3-AutoAnnotator runs SAM3 segmentation on a single image or an image folder, 
 
 Youtube Demo:
 
-[Watch Demo on YouTube](https://www.youtube.com/watch?v=2rhbMr5g6Lg)
+[Watch the demo](https://www.youtube.com/watch?v=2rhbMr5g6Lg)
 
 ---
 
