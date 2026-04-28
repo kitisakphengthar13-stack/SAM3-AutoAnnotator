@@ -27,7 +27,7 @@ def parse_args():
     parser.add_argument(
         "--text",
         nargs="+",
-        default=["siamese cat"],
+        required=True,
         help="Text prompt class names. Example: --text \"siamese cat\" dog car",
     )
     parser.add_argument(
@@ -40,7 +40,7 @@ def parse_args():
         "--half",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Use fp16 inference when supported.",
+        help="Use fp16 inference when supported by the selected device/backend.",
     )
     parser.add_argument(
         "--project-name",
@@ -133,6 +133,15 @@ def find_images(input_path):
         return images
 
     raise FileNotFoundError(f"Input path does not exist: {path}")
+
+
+def validate_model_path(model_path):
+    path = Path(model_path)
+    if not path.exists():
+        raise FileNotFoundError(f"SAM3 model path does not exist: {path}")
+    if not path.is_file():
+        raise FileNotFoundError(f"SAM3 model path is not a file: {path}")
+    return path
 
 
 def tensor_item(value, default=None):
@@ -354,12 +363,13 @@ def main():
     )
     annotated_dir = output_dir / "annotated_images" if args.save_annotated else None
     created_at = datetime.now().isoformat(timespec="seconds")
+    validated_model_path = validate_model_path(args.model)
 
     overrides = dict(
         conf=args.conf,
         task="segment",
         mode="predict",
-        model=args.model,
+        model=str(validated_model_path),
         half=args.half,
         save=False,
     )
@@ -441,6 +451,7 @@ def main():
 
     xyn_csv_path = output_dir / XYN_CSV_NAME
     box_csv_path = output_dir / BOX_CSV_NAME
+    run_summary_path = output_dir / "run_summary.json"
     write_csv(xyn_csv_path, all_xyn_rows, xyn_fields)
     write_csv(box_csv_path, all_box_rows, box_fields)
 
@@ -449,7 +460,7 @@ def main():
             "project_name": project_name,
             "output_folder": str(output_dir),
             "input_path": str(Path(args.input)),
-            "model_path": str(Path(args.model)),
+            "model_path": str(validated_model_path),
             "prompts": args.text,
             "confidence_threshold": args.conf,
             "images_processed": len(image_paths),
@@ -460,11 +471,12 @@ def main():
             "output_files": {
                 "xyn_csv": str(xyn_csv_path),
                 "box_csv": str(box_csv_path),
+                "run_summary_json": str(run_summary_path),
                 "annotated_images": str(annotated_dir) if annotated_dir is not None else None,
             },
             "created_at": created_at,
         }
-        save_run_summary(output_dir / "run_summary.json", summary)
+        save_run_summary(run_summary_path, summary)
 
     print("\nSummary")
     print(f"Project name: {project_name}")
