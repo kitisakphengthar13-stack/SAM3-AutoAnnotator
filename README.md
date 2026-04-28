@@ -1,6 +1,6 @@
 # SAM3-AutoAnnotator
 
-SAM3-AutoAnnotator is a command-line auto-annotation tool built on top of the Ultralytics SAM3 pipeline. It runs SAM3 text-prompted segmentation on either one image or a folder of images, then writes project-based outputs that include polygon segmentation CSV data, bounding-box CSV data, a run summary, and optional annotated preview images.
+SAM3-AutoAnnotator is a command-line auto-annotation tool built on top of the Ultralytics SAM3 pipeline. It runs SAM3 text-prompted segmentation on either one image or a folder of images, then writes project-based outputs that include polygon segmentation CSV data, bounding-box CSV data, a run summary, and prediction visualization images.
 
 This project does not implement SAM3 from scratch. It provides a reusable Python CLI workflow around Ultralytics SAM3 inference for auto-annotation tasks.
 
@@ -17,7 +17,7 @@ This project does not implement SAM3 from scratch. It provides a reusable Python
 - Create project-based output folders for each annotation job
 - Prevent accidental overwriting of previous runs
 - Save `run_summary.json` by default
-- Optionally save annotated preview images
+- Save SAM3 prediction visualization images by default
 
 ## Important Note: SAM3 Access
 
@@ -54,7 +54,7 @@ This project focuses on the auto-annotation workflow around SAM3, including:
 - organizing outputs by project
 - writing CSV files
 - saving run summaries
-- optionally saving annotated preview images
+- saving prediction visualization images
 
 ## Supported Inputs
 
@@ -119,7 +119,8 @@ outputs/
     ├── sam3_auto_annotation_xyn_outputs.csv
     ├── sam3_auto_annotation_box_outputs.csv
     ├── run_summary.json
-    └── annotated_images/        # only when --save-annotated is used
+    └── prediction_results/
+        └── image_name_predicted.png
 ```
 
 ## CSV Outputs
@@ -199,6 +200,28 @@ Disable it with:
 --no-run-summary
 ```
 
+## Prediction Results
+
+By default, each project folder includes SAM3 prediction visualization images in:
+
+```text
+prediction_results/
+```
+
+Each image uses the original image stem plus `_predicted.png`, for example:
+
+```text
+2-Tesla-Model-S_predicted.png
+```
+
+Disable prediction image output with:
+
+```powershell
+--no-save-predictions
+```
+
+`--save-annotated` is kept as a legacy alias for `--save-predictions`.
+
 ## CLI Options
 
 | Option | Required | Description |
@@ -212,9 +235,10 @@ Disable it with:
 | `--output-root` | No | Root folder for output projects. Default: `outputs` |
 | `--timestamp` | No | Always append a timestamp to the output folder name |
 | `--overwrite` | No | Allow writing into an existing project output folder |
-| `--save-annotated` | No | Save annotated preview images |
+| `--save-predictions` / `--no-save-predictions` | No | Enable or disable prediction visualization images in `prediction_results/`. Default: enabled |
+| `--save-annotated` | No | Legacy alias for `--save-predictions` |
 | `--run-summary` / `--no-run-summary` | No | Enable or disable `run_summary.json`. Default: enabled |
-| `--show` | No | Display annotated images with matplotlib |
+| `--show` | No | Display prediction visualization images with matplotlib |
 
 ## Example Commands
 
@@ -236,10 +260,10 @@ python sam3_auto_annotator.py --input "path\to\image.jpg" --model "path\to\sam3.
 python sam3_auto_annotator.py --input "path\to\images" --model "path\to\sam3.pt" --text person --project-name people_run --timestamp
 ```
 
-### Save Annotated Images
+### Disable Prediction Images
 
 ```powershell
-python sam3_auto_annotator.py --input "path\to\images" --model "path\to\sam3.pt" --text person car --save-annotated
+python sam3_auto_annotator.py --input "path\to\images" --model "path\to\sam3.pt" --text person car --no-save-predictions
 ```
 
 ### Use a Custom Output Root

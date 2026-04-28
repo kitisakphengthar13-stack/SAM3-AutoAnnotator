@@ -58,9 +58,15 @@ def parse_args():
         help="Always append a timestamp to the project output folder name.",
     )
     parser.add_argument(
+        "--save-predictions",
         "--save-annotated",
-        action="store_true",
-        help="Save annotated result images into the project output folder.",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        dest="save_predictions",
+        help=(
+            "Save SAM3 prediction visualization images into prediction_results/. "
+            "--save-annotated is a legacy alias."
+        ),
     )
     parser.add_argument(
         "--overwrite",
@@ -76,7 +82,7 @@ def parse_args():
     parser.add_argument(
         "--show",
         action="store_true",
-        help="Show annotated images with matplotlib.",
+        help="Show prediction visualization images with matplotlib.",
     )
     return parser.parse_args()
 
@@ -202,26 +208,26 @@ def xywhn_values(boxes, object_index):
     return [float(tensor_item(value)) for value in values[:4]]
 
 
-def annotated_image_path(annotated_dir, image_path):
-    return annotated_dir / f"{image_path.stem}_annotated.png"
+def prediction_image_path(prediction_results_dir, image_path):
+    return prediction_results_dir / f"{image_path.stem}_predicted.png"
 
 
-def save_or_show_annotated(result, image_path, annotated_dir=None, show=False):
-    if annotated_dir is None and not show:
+def save_or_show_prediction(result, image_path, prediction_results_dir=None, show=False):
+    if prediction_results_dir is None and not show:
         return
 
-    annotated = result.plot()
-    if annotated_dir is not None:
-        annotated_dir.mkdir(parents=True, exist_ok=True)
-        plt.imsave(annotated_image_path(annotated_dir, image_path), annotated)
+    prediction = result.plot()
+    if prediction_results_dir is not None:
+        prediction_results_dir.mkdir(parents=True, exist_ok=True)
+        plt.imsave(prediction_image_path(prediction_results_dir, image_path), prediction)
     if show:
         plt.figure(figsize=(10, 10))
-        plt.imshow(annotated)
+        plt.imshow(prediction)
         plt.axis("off")
         plt.show()
 
 
-def process_image(predictor, image_path, prompts, image_index, annotated_dir=None, show=False):
+def process_image(predictor, image_path, prompts, image_index, prediction_results_dir=None, show=False):
     predictor.set_image(str(image_path))
     results = predictor(text=prompts)
     result = results[0]
@@ -231,7 +237,12 @@ def process_image(predictor, image_path, prompts, image_index, annotated_dir=Non
     polygons = getattr(masks, "xyn", None) if masks is not None else None
 
     if boxes is None or polygons is None or len(polygons) == 0:
-        save_or_show_annotated(result, image_path, annotated_dir=annotated_dir, show=show)
+        save_or_show_prediction(
+            result,
+            image_path,
+            prediction_results_dir=prediction_results_dir,
+            show=show,
+        )
         return [], [], Counter(), 0
 
     class_ids = getattr(boxes, "cls", None)
@@ -321,7 +332,12 @@ def process_image(predictor, image_path, prompts, image_index, annotated_dir=Non
             }
         )
 
-    save_or_show_annotated(result, image_path, annotated_dir=annotated_dir, show=show)
+    save_or_show_prediction(
+        result,
+        image_path,
+        prediction_results_dir=prediction_results_dir,
+        show=show,
+    )
 
     return xyn_rows, box_rows, class_counter, len(polygons)
 
@@ -361,7 +377,7 @@ def main():
         force_timestamp=args.timestamp,
         overwrite=args.overwrite,
     )
-    annotated_dir = output_dir / "annotated_images" if args.save_annotated else None
+    prediction_results_dir = output_dir / "prediction_results" if args.save_predictions else None
     created_at = datetime.now().isoformat(timespec="seconds")
     validated_model_path = validate_model_path(args.model)
 
@@ -388,7 +404,7 @@ def main():
             image_path=image_path,
             prompts=args.text,
             image_index=image_index,
-            annotated_dir=annotated_dir,
+            prediction_results_dir=prediction_results_dir,
             show=args.show,
         )
 
@@ -472,7 +488,9 @@ def main():
                 "xyn_csv": str(xyn_csv_path),
                 "box_csv": str(box_csv_path),
                 "run_summary_json": str(run_summary_path),
-                "annotated_images": str(annotated_dir) if annotated_dir is not None else None,
+                "prediction_results": (
+                    str(prediction_results_dir) if prediction_results_dir is not None else None
+                ),
             },
             "created_at": created_at,
         }
@@ -495,8 +513,8 @@ def main():
     print(f"Saved box CSV: {box_csv_path}")
     if args.run_summary:
         print(f"Saved run summary: {output_dir / 'run_summary.json'}")
-    if annotated_dir is not None:
-        print(f"Saved annotated images: {annotated_dir}")
+    if prediction_results_dir is not None:
+        print(f"Saved prediction results: {prediction_results_dir}")
 
 
 if __name__ == "__main__":
