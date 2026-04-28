@@ -13,6 +13,7 @@ from ultralytics.models.sam import SAM3SemanticPredictor
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 XYN_CSV_NAME = "sam3_auto_annotation_xyn_outputs.csv"
 BOX_CSV_NAME = "sam3_auto_annotation_box_outputs.csv"
+EXPORT_FORMATS = ["csv", "yolo"]
 
 
 def parse_args():
@@ -69,6 +70,13 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--export-formats",
+        nargs="+",
+        choices=EXPORT_FORMATS,
+        default=["csv"],
+        help="Output formats to create. Use one or more of: csv yolo. Default: csv.",
+    )
+    parser.add_argument(
         "--overwrite",
         action="store_true",
         help="Allow writing into an existing project output folder.",
@@ -85,6 +93,14 @@ def parse_args():
         help="Show prediction visualization images with matplotlib.",
     )
     return parser.parse_args()
+
+
+def normalize_export_formats(export_formats):
+    normalized = []
+    for export_format in export_formats:
+        if export_format not in normalized:
+            normalized.append(export_format)
+    return normalized
 
 
 def sanitize_name(value):
@@ -361,6 +377,69 @@ def write_csv(path, rows, fieldnames):
         writer.writerows(rows)
 
 
+def build_yolo_detection_line(row):
+    values = [
+        row.get("x_center_norm", ""),
+        row.get("y_center_norm", ""),
+        row.get("width_norm", ""),
+        row.get("height_norm", ""),
+    ]
+    if any(value == "" for value in values):
+        raise ValueError(
+            "Cannot build YOLO detection label because normalized box values are missing "
+            f"for image {row.get('image_name')} object {row.get('object_index')}."
+        )
+
+    return "{} {:.6f} {:.6f} {:.6f} {:.6f}".format(
+        int(row["class_id"]),
+        *(float(value) for value in values),
+    )
+
+
+def group_rows_by_image(rows):
+    grouped = {}
+    for row in sorted(
+        rows,
+        key=lambda item: (int(item["image_index"]), int(item["object_index"])),
+    ):
+        grouped.setdefault(int(row["image_index"]), []).append(row)
+    return grouped
+
+
+def write_yolo_labels(output_dir, image_paths, xyn_rows, box_rows):
+    yolo_root = output_dir / "yolo_labels"
+    segmentation_dir = yolo_root / "segmentation"
+    detection_dir = yolo_root / "detection"
+    segmentation_dir.mkdir(parents=True, exist_ok=True)
+    detection_dir.mkdir(parents=True, exist_ok=True)
+
+    xyn_rows_by_image = group_rows_by_image(xyn_rows)
+    box_rows_by_image = group_rows_by_image(box_rows)
+
+    for image_index, image_path in enumerate(image_paths):
+        segmentation_lines = [
+            row["yolo_segmentation_line"] for row in xyn_rows_by_image.get(image_index, [])
+        ]
+        detection_lines = [
+            build_yolo_detection_line(row) for row in box_rows_by_image.get(image_index, [])
+        ]
+
+        segmentation_path = segmentation_dir / f"{image_path.stem}.txt"
+        detection_path = detection_dir / f"{image_path.stem}.txt"
+        segmentation_text = "\n".join(segmentation_lines)
+        detection_text = "\n".join(detection_lines)
+        segmentation_path.write_text(
+            segmentation_text + ("\n" if segmentation_text else ""),
+            encoding="utf-8",
+        )
+        detection_path.write_text(
+            detection_text + ("\n" if detection_text else ""),
+            encoding="utf-8",
+        )
+
+    return segmentation_dir, detection_dir
+
+
 def save_run_summary(path, summary):
     with path.open("w", encoding="utf-8") as summary_file:
         json.dump(summary, summary_file, indent=2)
@@ -369,6 +448,7 @@ def save_run_summary(path, summary):
 
 def main():
     args = parse_args()
+    export_formats = normalize_export_formats(args.export_formats)
     image_paths = find_images(args.input)
     project_name = args.project_name or default_project_name(args.input, args.text)
     output_dir, project_name = create_project_output_dir(
@@ -465,16 +545,29 @@ def main():
         "confidence",
     ]
 
-    xyn_csv_path = output_dir / XYN_CSV_NAME
-    box_csv_path = output_dir / BOX_CSV_NAME
+    xyn_csv_path = output_dir / XYN_CSV_NAME if "csv" in export_formats else None
+    box_csv_path = output_dir / BOX_CSV_NAME if "csv" in export_formats else None
     run_summary_path = output_dir / "run_summary.json"
-    write_csv(xyn_csv_path, all_xyn_rows, xyn_fields)
-    write_csv(box_csv_path, all_box_rows, box_fields)
+    yolo_segmentation_dir = None
+    yolo_detection_dir = None
+
+    if "csv" in export_formats:
+        write_csv(xyn_csv_path, all_xyn_rows, xyn_fields)
+        write_csv(box_csv_path, all_box_rows, box_fields)
+
+    if "yolo" in export_formats:
+        yolo_segmentation_dir, yolo_detection_dir = write_yolo_labels(
+            output_dir=output_dir,
+            image_paths=image_paths,
+            xyn_rows=all_xyn_rows,
+            box_rows=all_box_rows,
+        )
 
     if args.run_summary:
         summary = {
             "project_name": project_name,
             "output_folder": str(output_dir),
+            "export_formats": export_formats,
             "input_path": str(Path(args.input)),
             "model_path": str(validated_model_path),
             "prompts": args.text,
@@ -485,11 +578,17 @@ def main():
             "total_detections": len(all_box_rows),
             "class_counts": dict(sorted(total_class_counts.items())),
             "output_files": {
-                "xyn_csv": str(xyn_csv_path),
-                "box_csv": str(box_csv_path),
+                "xyn_csv": str(xyn_csv_path) if xyn_csv_path is not None else None,
+                "box_csv": str(box_csv_path) if box_csv_path is not None else None,
                 "run_summary_json": str(run_summary_path),
                 "prediction_results": (
                     str(prediction_results_dir) if prediction_results_dir is not None else None
+                ),
+                "yolo_segmentation_labels": (
+                    str(yolo_segmentation_dir) if yolo_segmentation_dir is not None else None
+                ),
+                "yolo_detection_labels": (
+                    str(yolo_detection_dir) if yolo_detection_dir is not None else None
                 ),
             },
             "created_at": created_at,
@@ -499,6 +598,7 @@ def main():
     print("\nSummary")
     print(f"Project name: {project_name}")
     print(f"Output folder: {output_dir}")
+    print(f"Export formats: {', '.join(export_formats)}")
     print(f"Images processed: {len(image_paths)}")
     print(f"Images with no detections: {len(no_detection_images)}")
     print(f"Total detections: {len(all_box_rows)}")
@@ -509,8 +609,12 @@ def main():
         print("No-detection images:")
         for image_path in no_detection_images:
             print(f"  {image_path}")
-    print(f"Saved polygon CSV: {xyn_csv_path}")
-    print(f"Saved box CSV: {box_csv_path}")
+    if "csv" in export_formats:
+        print(f"Saved polygon CSV: {xyn_csv_path}")
+        print(f"Saved box CSV: {box_csv_path}")
+    if "yolo" in export_formats:
+        print(f"Saved YOLO segmentation labels: {yolo_segmentation_dir}")
+        print(f"Saved YOLO detection labels: {yolo_detection_dir}")
     if args.run_summary:
         print(f"Saved run summary: {output_dir / 'run_summary.json'}")
     if prediction_results_dir is not None:
