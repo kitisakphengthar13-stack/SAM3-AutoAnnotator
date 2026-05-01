@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sam3-auto-annotator"
+version = "0.1.0"
+description = "SAM3 text-prompted auto-annotation workflow using Ultralytics."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "ultralytics",
+    "matplotlib",
+    "PyYAML",
+]
+
+[project.scripts]
+sam3-auto-annotator = "sam3_auto_annotator.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

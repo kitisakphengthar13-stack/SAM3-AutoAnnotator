@@ -1,0 +1,23 @@
+input:
+  path: data/images
+
+model:
+  path: models/sam3.pt
+  confidence: 0.7
+  half: true
+
+prompts:
+  - car
+
+output:
+  root: outputs
+  project_name: null
+  timestamp: false
+  overwrite: false
+  save_predictions: true
+  run_summary: true
+  show: false
+
+export:
+  formats:
+    - csv
