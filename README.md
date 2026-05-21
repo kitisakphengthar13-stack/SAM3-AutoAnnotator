@@ -4,10 +4,6 @@ A clean Python CLI tool for **SAM3 text-prompted auto-annotation** using Ultraly
 
 SAM3-AutoAnnotator runs SAM3 on a single image or a folder of images, then exports practical annotation files for review, debugging, and downstream dataset preparation.
 
-## Demo
-
-Youtube Demo: [Watch the demo](https://www.youtube.com/watch?v=2rhbMr5g6Lg)
-
 ## Overview
 
 This project is designed to turn SAM3 inference into a reusable annotation workflow.
