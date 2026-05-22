@@ -14,8 +14,15 @@ dependencies = [
     "PyYAML",
 ]
 
+[project.optional-dependencies]
+gui = [
+    "PySide6",
+    "QtAwesome",
+]
+
 [project.scripts]
 sam3-auto-annotator = "sam3_auto_annotator.cli:main"
+sam3-auto-annotator-gui = "sam3_auto_annotator.gui.app:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

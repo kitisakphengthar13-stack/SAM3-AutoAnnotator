@@ -22,6 +22,13 @@ The main goal is to make SAM3 outputs easier to inspect, export, and reuse in co
 ## Features
 
 - Text-prompted SAM3 auto-annotation
+- PySide6 desktop GUI for human-in-the-loop bounding-box annotation
+- Editable SAM3 draft boxes
+- Manual bounding-box draw, move, resize, delete, and class correction
+- Folder batch pre-annotation with `Run SAM3 All Remaining`
+- Existing YOLO detection label import
+- Corrected YOLO detection and bounding-box CSV export from edited state
+- Resumable GUI projects with `annotation_state.json`
 - Single-image input support
 - Non-recursive folder input support
 - Multiple text prompts as class names
@@ -92,6 +99,186 @@ Verify the installed CLI command.
 ```powershell
 sam3-auto-annotator --help
 ```
+
+## GUI Annotation App
+
+SAM3-AutoAnnotator includes a PySide6 desktop GUI for human-in-the-loop
+bounding-box annotation. SAM3 predictions are treated as editable draft boxes:
+you can run SAM3, review the results, resize or delete incorrect boxes, add
+manual boxes, import existing YOLO labels, save the project state, and export
+corrected labels.
+
+![SAM3-AutoAnnotator GUI](./assets/gui_main.png)
+
+The GUI workspace is organized around a left Dataset browser, central annotation
+canvas, and right Setup / Annotation / Results inspector. Common workflows are
+available from the compact command bar: Run SAM3 on the current image, Run All
+Remaining for folder pre-annotation, Import YOLO labels, review/edit boxes, and
+Export corrected labels.
+
+### GUI Installation
+
+Install the optional GUI dependencies:
+
+```powershell
+pip install -e .[gui]
+```
+
+Launch from the repository root:
+
+```powershell
+python sam3auto_app.py
+```
+
+Or, after editable install:
+
+```powershell
+sam3-auto-annotator-gui
+```
+
+The CLI remains available after installing the GUI extra.
+
+```powershell
+sam3-auto-annotator --help
+```
+
+### GUI Feature Summary
+
+- Human-in-the-loop annotation workflow
+- Single-image and non-recursive folder projects
+- Editable SAM3 draft boxes
+- Manual bounding-box draw, select, move, resize, delete, and class correction
+- Current-image SAM3 inference with predictor cache/reuse
+- Folder pre-annotation with `Run SAM3 All Remaining`
+- Existing YOLO detection label import
+- Corrected YOLO detection label export
+- Corrected bounding-box CSV export
+- Preview image export for reviewed annotations
+- Resumable project state via `annotation_state.json`
+
+### Basic GUI Workflow
+
+1. Launch the GUI.
+
+   ```powershell
+   python sam3auto_app.py
+   ```
+
+2. Open one image or a folder from the top command bar.
+3. Confirm or edit the output folder in the Setup tab.
+4. Add classes/prompts, one per line or comma-separated.
+5. Draw boxes manually or run SAM3 to create draft boxes.
+6. Review each image and correct boxes by dragging, resizing handles, editing
+   coordinates, deleting boxes, or changing class.
+7. Save the project state.
+8. Export corrected labels.
+
+### Recommended Workflow
+
+For real dataset work, use this sequence:
+
+```text
+Open Folder -> Import YOLO or Run SAM3 All -> Review/Edit -> Save -> Export
+```
+
+This keeps imported or SAM3-generated annotations as drafts and makes the
+editable GUI state the source of truth for final export.
+
+### SAM3-Assisted Workflow
+
+1. Open an image or folder.
+2. Select the local SAM3 model file.
+3. Enter class prompts in the Setup tab.
+4. Set confidence and fp16 precision as needed.
+5. Click `Run SAM3` for the selected image.
+6. Correct boxes in the canvas or Annotation tab.
+
+The GUI caches the loaded predictor for repeated runs with the same model,
+confidence, and fp16 settings. If those settings change, the predictor is
+reloaded.
+
+### Batch Pre-Annotation Workflow
+
+Use `Run All Remaining` to run SAM3 over a folder/project without blocking the
+GUI.
+
+The default batch policy is conservative:
+
+- Runs only images with status `not_predicted` or `error`.
+- Skips `predicted`, `edited`, `reviewed`, and `no_detection` images.
+- Does not silently overwrite user-edited or reviewed annotations.
+- Continues past per-image failures and marks failed images as `error`.
+- Cancel stops after the current image finishes; partial results remain in the
+  project state.
+
+After a batch run, save `annotation_state.json` before closing the app.
+
+### Import Existing YOLO Labels
+
+Use `Import YOLO` from the command bar or `Import YOLO Labels` in the Setup tab.
+
+The importer expects YOLO detection labels:
+
+```text
+class_id x_center y_center width height
+```
+
+Rules:
+
+- Label files are matched to images by stem.
+- For example, `image_001.jpg` matches `image_001.txt`.
+- Coordinates are normalized YOLO `xywh` values and are converted to original
+  image-pixel `xyxy` boxes.
+- Imported boxes become editable annotations.
+- If an imported box is edited, its source becomes `edited`.
+- Missing label file leaves the image as `not_predicted`.
+- Empty label file marks the image as `no_detection`.
+- Edited and reviewed images are skipped by default.
+- Invalid label lines are skipped and counted in the import summary.
+- Unknown class IDs become `class_<id>`.
+
+### GUI Export Outputs
+
+GUI export writes corrected outputs from the editable project state, not from
+raw SAM3 result objects.
+
+```text
+outputs/<project_name>/
+├── annotation_state.json
+├── sam3_auto_annotation_box_outputs.csv
+├── yolo_labels/
+│   ├── segmentation/
+│   │   └── <image_stem>.txt
+│   └── detection/
+│       └── <image_stem>.txt
+├── preview_results/
+│   └── <image_stem>_reviewed.png
+└── run_summary.json
+```
+
+Important GUI output files:
+
+- `annotation_state.json`: resumable project state, including image list,
+  statuses, prompts, model path, and editable annotations.
+- `sam3_auto_annotation_box_outputs.csv`: corrected bounding-box export.
+- `yolo_labels/detection/*.txt`: corrected YOLO detection labels. Images with
+  no active boxes receive empty `.txt` files.
+- `preview_results/*_reviewed.png`: optional reviewed preview images with
+  active boxes drawn over the source image.
+- `run_summary.json`: export summary for corrected GUI outputs.
+
+The GUI currently focuses on corrected detection boxes. Segmentation correction
+is not implemented yet.
+
+### GUI Known Limitations
+
+- No polygon or mask editing yet.
+- No corrected segmentation workflow yet.
+- `Run All Remaining` is remaining-only by default and intentionally skips
+  edited/reviewed images.
+- No autosave during batch prediction.
+- The GUI does not create train/val/test splits or `data.yaml`.
+- The UI may continue to receive visual and workflow refinements.
 
 You can also run the package as a Python module.
 
@@ -488,6 +675,52 @@ Tested:
 - local wrapper commands
 
 Detection counts are intentionally not treated as fixed test expectations because SAM3 output can vary by model, prompts, image content, confidence threshold, and runtime environment.
+
+## Developer Notes
+
+Install the base package for CLI work:
+
+```powershell
+pip install -e .
+```
+
+Install optional GUI dependencies:
+
+```powershell
+pip install -e .[gui]
+```
+
+Run the automated tests:
+
+```powershell
+$env:PYTHONPATH='src'; $env:QT_QPA_PLATFORM='offscreen'; python -m unittest discover -s tests
+```
+
+Launch the GUI from the repository root:
+
+```powershell
+python sam3auto_app.py
+```
+
+Or launch the installed GUI entry point:
+
+```powershell
+sam3-auto-annotator-gui
+```
+
+The original CLI remains available and is not replaced by the GUI:
+
+```powershell
+sam3-auto-annotator --help
+python -m sam3_auto_annotator --help
+```
+
+The GUI domain model is intentionally independent from PySide6 where practical:
+
+- `annotation_state.json` stores editable project state.
+- Export helpers convert `ProjectState` annotations into existing CSV/YOLO rows.
+- SAM3 prediction workers run in background Qt threads.
+- Predictor cache reuse is scoped to the GUI session.
 
 ## Attribution
 
