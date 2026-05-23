@@ -2,6 +2,7 @@ from datetime import datetime
 from pathlib import Path
 
 from sam3_auto_annotator.annotation.converters import build_box_rows, image_paths_for_export
+from sam3_auto_annotator.annotation.segmentation import build_segmentation_rows
 from sam3_auto_annotator.exporters.csv_exporter import BOX_FIELDS, write_csv
 from sam3_auto_annotator.exporters.yolo_exporter import write_yolo_labels
 from sam3_auto_annotator.paths import BOX_CSV_NAME
@@ -14,12 +15,13 @@ def export_corrected_detection(project_state, output_dir, write_summary=True):
 
     image_paths = image_paths_for_export(project_state)
     box_rows = build_box_rows(project_state)
+    segmentation_rows = build_segmentation_rows(project_state)
     box_csv_path = output_dir / BOX_CSV_NAME
     write_csv(box_csv_path, box_rows, BOX_FIELDS)
-    _, detection_dir = write_yolo_labels(
+    segmentation_dir, detection_dir = write_yolo_labels(
         output_dir=output_dir,
         image_paths=image_paths,
-        xyn_rows=[],
+        xyn_rows=segmentation_rows,
         box_rows=box_rows,
     )
 
@@ -32,7 +34,7 @@ def export_corrected_detection(project_state, output_dir, write_summary=True):
             {
                 "project_name": project_state.project_name,
                 "output_folder": str(output_dir),
-                "export_formats": ["csv", "yolo_detection"],
+                "export_formats": ["csv", "yolo_detection", "yolo_segmentation"],
                 "input_path": project_state.input_path,
                 "model_path": project_state.model_path,
                 "prompts": project_state.prompts,
@@ -40,9 +42,11 @@ def export_corrected_detection(project_state, output_dir, write_summary=True):
                 "images_not_predicted": len(unpredicted),
                 "unpredicted_images": [image.image_path for image in unpredicted],
                 "total_detections": len(box_rows),
+                "total_segmentations": len(segmentation_rows),
                 "output_files": {
                     "box_csv": str(box_csv_path),
                     "yolo_detection_labels": str(detection_dir),
+                    "yolo_segmentation_labels": str(segmentation_dir),
                 },
                 "created_at": datetime.now().isoformat(timespec="seconds"),
                 "source": "editable_project_state",
@@ -52,6 +56,8 @@ def export_corrected_detection(project_state, output_dir, write_summary=True):
     return {
         "box_csv": box_csv_path,
         "yolo_detection_dir": detection_dir,
+        "yolo_segmentation_dir": segmentation_dir,
         "run_summary": summary_path,
         "rows": box_rows,
+        "segmentation_rows": segmentation_rows,
     }

@@ -32,5 +32,6 @@ ICONS = {
     "results": "fa5s.file-alt",
     "preview": "fa5s.eye",
     "reviewed": "fa5s.check-circle",
+    "reset": "fa5s.undo",
     "warning": "fa5s.exclamation-triangle",
 }

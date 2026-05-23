@@ -224,6 +224,14 @@ QWidget#fp16Box {{
     border: 1px solid {PALETTE["border_light"]};
     border-radius: 2px;
 }}
+QWidget#overlayControls {{
+    background: transparent;
+    border: none;
+}}
+QWidget#overlayControls QLabel, QWidget#overlayControls QCheckBox {{
+    background: transparent;
+    border: none;
+}}
 
 QWidget#emptyState {{
     background: {PALETTE["canvas_bg"]};

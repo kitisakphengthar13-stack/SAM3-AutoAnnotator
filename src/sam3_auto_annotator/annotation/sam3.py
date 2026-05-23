@@ -79,6 +79,9 @@ def annotations_from_sam3_result(result, prompts):
                 source=AnnotationSource.SAM3,
                 confidence=None if confidence is None else float(confidence),
                 polygon_xyn=_polygon_values(polygons, object_index),
+                original_box_xyxy=box_xyxy,
+                original_class_id=class_id,
+                original_class_name=get_class_name(class_id, prompts),
             )
         )
 

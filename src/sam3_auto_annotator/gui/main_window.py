@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from PySide6.QtCore import QSize, QUrl, Qt
-from PySide6.QtGui import QColor, QDesktopServices, QImage, QPainter, QPen
+from PySide6.QtCore import QPointF, QSize, QUrl, Qt
+from PySide6.QtGui import QBrush, QColor, QDesktopServices, QImage, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QFileDialog,
     QAbstractItemView,
@@ -34,6 +34,10 @@ from PySide6.QtWidgets import (
 )
 
 from sam3_auto_annotator.annotation.models import ImageStatus
+from sam3_auto_annotator.annotation.segmentation import (
+    has_valid_segmentation,
+    polygon_xyn_to_pixels,
+)
 from sam3_auto_annotator.annotation.yolo_importer import import_yolo_detection_labels
 from sam3_auto_annotator.gui.fields import NumericLineEdit, configure_c_locale
 from sam3_auto_annotator.gui.icons import ICONS, icon
@@ -343,6 +347,40 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(7, 7, 7, 7)
         layout.setSpacing(5)
 
+        overlay_panel = QWidget()
+        overlay_panel.setObjectName("overlayControls")
+        overlay_layout = QVBoxLayout(overlay_panel)
+        overlay_layout.setContentsMargins(0, 0, 0, 3)
+        overlay_layout.setSpacing(3)
+        overlay_row = QHBoxLayout()
+        overlay_row.setContentsMargins(0, 0, 0, 0)
+        overlay_label = QLabel("Overlays")
+        overlay_label.setObjectName("formLabel")
+        overlay_row.addWidget(overlay_label)
+        self.show_boxes_check = QCheckBox("Show Boxes")
+        self.show_boxes_check.setChecked(True)
+        self.show_masks_check = QCheckBox("Show Masks")
+        self.show_masks_check.setChecked(True)
+        self.show_polygons_check = QCheckBox("Show Polygons")
+        self.show_polygons_check.setChecked(False)
+        for checkbox in (self.show_boxes_check, self.show_masks_check, self.show_polygons_check):
+            checkbox.setToolTip(
+                "SAM3 masks/polygons are preview-only. Editing bbox/class hides stale segmentation; "
+                "Reset to SAM3 restores it."
+            )
+            checkbox.toggled.connect(self._update_canvas_overlay_visibility)
+            overlay_row.addWidget(checkbox)
+        overlay_row.addStretch(1)
+        overlay_note = QLabel(
+            "Masks/polygons are preview-only. Detection export uses current boxes; "
+            "segmentation export uses unchanged or reset SAM3 polygons."
+        )
+        overlay_note.setObjectName("mutedLabel")
+        overlay_note.setWordWrap(True)
+        overlay_layout.addLayout(overlay_row)
+        overlay_layout.addWidget(overlay_note)
+        layout.addWidget(overlay_panel)
+
         selected_group = QGroupBox("Selected Annotation")
         selected_layout = QFormLayout(selected_group)
         selected_layout.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
@@ -370,9 +408,14 @@ class MainWindow(QMainWindow):
 
         action_row = QHBoxLayout()
         self.apply_box_button = self._button("Apply Box", ICONS["draw"], self._apply_box_details)
+        self.reset_sam3_button = self._button("Reset to SAM3", ICONS["reset"], self.reset_selected_to_sam3)
+        self.reset_sam3_button.setToolTip(
+            "Restore the original SAM3 bbox/class and make its mask/polygon preview/export valid again."
+        )
         self.delete_button = self._button("Delete", ICONS["trash"], self.delete_selected_annotation, "#dc2626")
         self.delete_button.setObjectName("dangerButton")
         action_row.addWidget(self.apply_box_button)
+        action_row.addWidget(self.reset_sam3_button)
         action_row.addWidget(self.delete_button)
         selected_layout.addRow(action_row)
 
@@ -658,6 +701,13 @@ class MainWindow(QMainWindow):
         self._set_message("Draw mode enabled." if checked else "Draw mode disabled.")
         self._update_status_context()
 
+    def _update_canvas_overlay_visibility(self):
+        self.canvas.set_overlay_visibility(
+            show_boxes=self.show_boxes_check.isChecked(),
+            show_masks=self.show_masks_check.isChecked(),
+            show_polygons=self.show_polygons_check.isChecked(),
+        )
+
     def _add_manual_box(self, box_xyxy):
         image = self.current_image()
         if image is None:
@@ -728,6 +778,7 @@ class MainWindow(QMainWindow):
         class_index = self.class_combo.findText(annotation.class_name)
         if class_index >= 0:
             self.class_combo.setCurrentIndex(class_index)
+        self.reset_sam3_button.setEnabled(annotation.can_reset_to_sam3)
         self._updating_details = False
 
     def _clear_annotation_details(self):
@@ -749,6 +800,7 @@ class MainWindow(QMainWindow):
             self.delete_button,
         ):
             widget.setEnabled(enabled)
+        self.reset_sam3_button.setEnabled(False)
         self.class_combo.setEnabled(self.project_state is not None)
         self.delete_toolbar_button.setEnabled(enabled)
 
@@ -821,6 +873,25 @@ class MainWindow(QMainWindow):
             self._set_message("Box coordinates updated.")
         except Exception as exc:
             self._show_error("Invalid box coordinates", exc)
+
+    def reset_selected_to_sam3(self):
+        annotation = self.selected_annotation()
+        image = self.current_image()
+        if annotation is None or image is None:
+            return
+        try:
+            annotation.reset_to_sam3()
+            if image.status != ImageStatus.REVIEWED:
+                image.status = ImageStatus.EDITED
+            self.canvas.set_annotations(image.active_annotations)
+            self.canvas.select_annotation(annotation.id)
+            self._refresh_annotation_table()
+            self._refresh_image_list_keep_current()
+            self._show_annotation_details(annotation)
+            self._mark_dirty()
+            self._set_message("Restored original SAM3 box and mask/polygon preview.")
+        except Exception as exc:
+            self._show_error("Could not reset annotation", exc)
 
     def delete_selected_annotation(self):
         annotation = self.selected_annotation()
@@ -1127,6 +1198,7 @@ class MainWindow(QMainWindow):
                 output_dir=output_dir,
                 box_csv=result["box_csv"],
                 yolo_detection_dir=result["yolo_detection_dir"],
+                yolo_segmentation_dir=result["yolo_segmentation_dir"],
                 preview_path=preview_path,
             )
             self.tabs.setCurrentIndex(2)
@@ -1153,13 +1225,64 @@ class MainWindow(QMainWindow):
 
         painter = QPainter(qimage)
         painter.setRenderHint(QPainter.Antialiasing)
-        for annotation in image.active_annotations:
-            color = BOX_COLORS[annotation.class_id % len(BOX_COLORS)]
-            pen = QPen(color, max(2, int(qimage.width() / 640)))
-            painter.setPen(pen)
-            x1, y1, x2, y2 = annotation.box_xyxy
-            painter.drawRect(int(x1), int(y1), int(x2 - x1), int(y2 - y1))
-            painter.drawText(int(x1) + 4, max(14, int(y1) - 4), annotation.class_name)
+        show_masks = self.show_masks_check.isChecked()
+        show_polygons = self.show_polygons_check.isChecked()
+        show_boxes = self.show_boxes_check.isChecked()
+
+        if show_masks:
+            for annotation in image.active_annotations:
+                if not has_valid_segmentation(annotation):
+                    continue
+                polygon = QPolygonF(
+                    [
+                        QPointF(x, y)
+                        for x, y in polygon_xyn_to_pixels(
+                            annotation.polygon_xyn,
+                            qimage.width(),
+                            qimage.height(),
+                        )
+                    ]
+                )
+                if polygon.size() < 3:
+                    continue
+                color = QColor("#0891b2")
+                color.setAlpha(95)
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QBrush(color))
+                painter.drawPolygon(polygon)
+
+        if show_polygons:
+            for annotation in image.active_annotations:
+                if not has_valid_segmentation(annotation):
+                    continue
+                polygon = QPolygonF(
+                    [
+                        QPointF(x, y)
+                        for x, y in polygon_xyn_to_pixels(
+                            annotation.polygon_xyn,
+                            qimage.width(),
+                            qimage.height(),
+                        )
+                    ]
+                )
+                if polygon.size() < 3:
+                    continue
+                color = QColor("#22d3ee")
+                color.setAlpha(235)
+                pen = QPen(color, max(2, int(qimage.width() / 760)))
+                painter.setPen(pen)
+                painter.setBrush(QBrush(Qt.NoBrush))
+                painter.drawPolygon(polygon)
+
+        if show_boxes:
+            for annotation in image.active_annotations:
+                color = BOX_COLORS[annotation.class_id % len(BOX_COLORS)]
+                pen = QPen(color, max(2, int(qimage.width() / 640)))
+                painter.setPen(pen)
+                painter.setBrush(QBrush(Qt.NoBrush))
+                x1, y1, x2, y2 = annotation.box_xyxy
+                painter.drawRect(int(x1), int(y1), int(x2 - x1), int(y2 - y1))
+                painter.drawText(int(x1) + 4, max(14, int(y1) - 4), annotation.class_name)
         painter.end()
         qimage.save(str(preview_path))
         self.last_preview_path = preview_path
@@ -1200,7 +1323,15 @@ class MainWindow(QMainWindow):
         self.output_dir_edit.setText(str(output_dir))
         return output_dir
 
-    def _update_results_panel(self, status=None, output_dir=None, box_csv=None, yolo_detection_dir=None, preview_path=None):
+    def _update_results_panel(
+        self,
+        status=None,
+        output_dir=None,
+        box_csv=None,
+        yolo_detection_dir=None,
+        yolo_segmentation_dir=None,
+        preview_path=None,
+    ):
         if status is not None:
             self.result_status_label.setText(status)
         if output_dir is None and self.project_state is not None:
@@ -1212,9 +1343,15 @@ class MainWindow(QMainWindow):
         elif self.last_export_result:
             self.result_csv_label.setText(str(self.last_export_result["box_csv"]))
         if yolo_detection_dir is not None:
-            self.result_yolo_label.setText(str(yolo_detection_dir))
+            yolo_text = f"Detection: {yolo_detection_dir}"
+            if yolo_segmentation_dir is not None:
+                yolo_text += f"\nSegmentation: {yolo_segmentation_dir}"
+            self.result_yolo_label.setText(yolo_text)
         elif self.last_export_result:
-            self.result_yolo_label.setText(str(self.last_export_result["yolo_detection_dir"]))
+            yolo_text = f"Detection: {self.last_export_result['yolo_detection_dir']}"
+            if self.last_export_result.get("yolo_segmentation_dir") is not None:
+                yolo_text += f"\nSegmentation: {self.last_export_result['yolo_segmentation_dir']}"
+            self.result_yolo_label.setText(yolo_text)
         if preview_path is not None:
             self.preview_label.setText(str(preview_path))
             self._set_preview_thumbnail(preview_path)

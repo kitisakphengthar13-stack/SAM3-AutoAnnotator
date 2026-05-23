@@ -147,6 +147,7 @@ sam3-auto-annotator --help
 - Human-in-the-loop annotation workflow
 - Single-image and non-recursive folder projects
 - Editable SAM3 draft boxes
+- SAM3 mask/polygon preview for unchanged draft annotations
 - Manual bounding-box draw, select, move, resize, delete, and class correction
 - Current-image SAM3 inference with predictor cache/reuse
 - Folder pre-annotation with `Run SAM3 All Remaining`
@@ -196,6 +197,13 @@ editable GUI state the source of truth for final export.
 The GUI caches the loaded predictor for repeated runs with the same model,
 confidence, and fp16 settings. If those settings change, the predictor is
 reloaded.
+
+SAM3 predictions may include both bounding boxes and segmentation masks/polygons.
+In the GUI, masks and polygons are preview-only: editing a SAM3 bbox or class
+makes that mask stale, hides it from the canvas, and excludes it from
+segmentation export. Use `Reset to SAM3` on a selected annotation to restore the
+original SAM3 bbox/class and make its mask/polygon preview and segmentation
+export valid again.
 
 ### Batch Pre-Annotation Workflow
 
@@ -263,17 +271,23 @@ Important GUI output files:
 - `sam3_auto_annotation_box_outputs.csv`: corrected bounding-box export.
 - `yolo_labels/detection/*.txt`: corrected YOLO detection labels. Images with
   no active boxes receive empty `.txt` files.
+- `yolo_labels/segmentation/*.txt`: YOLO segmentation labels for unchanged or
+  reset SAM3 polygon annotations only. Edited, manual, and imported bbox-only
+  annotations are excluded from segmentation export.
 - `preview_results/*_reviewed.png`: optional reviewed preview images with
-  active boxes drawn over the source image.
+  active boxes and currently enabled preview overlays drawn over the source
+  image.
 - `run_summary.json`: export summary for corrected GUI outputs.
 
-The GUI currently focuses on corrected detection boxes. Segmentation correction
-is not implemented yet.
+Detection export always uses the current editable bbox state. Segmentation
+export is intentionally conservative and only includes unchanged/restored SAM3
+polygons; edited masks are not inferred from corrected boxes.
 
 ### GUI Known Limitations
 
 - No polygon or mask editing yet.
-- No corrected segmentation workflow yet.
+- No corrected segmentation editing workflow yet; SAM3 masks/polygons are
+  preview-only unless left unchanged or restored with `Reset to SAM3`.
 - `Run All Remaining` is remaining-only by default and intentionally skips
   edited/reviewed images.
 - No autosave during batch prediction.

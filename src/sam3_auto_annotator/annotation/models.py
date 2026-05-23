@@ -47,17 +47,35 @@ class Annotation:
     source: AnnotationSource = AnnotationSource.SAM3
     confidence: Optional[float] = None
     polygon_xyn: Optional[List[List[float]]] = None
+    original_box_xyxy: Optional[Tuple[float, float, float, float]] = None
+    original_class_id: Optional[int] = None
+    original_class_name: Optional[str] = None
     deleted: bool = False
 
     def __post_init__(self):
         self.source = _coerce_source(self.source)
         self.box_xyxy = validate_xyxy(self.box_xyxy)
+        if self.original_box_xyxy is not None:
+            self.original_box_xyxy = validate_xyxy(self.original_box_xyxy)
         self.class_id = int(self.class_id)
+        if self.original_class_id is not None:
+            self.original_class_id = int(self.original_class_id)
         self.confidence = None if self.confidence is None else float(self.confidence)
+        if self.source == AnnotationSource.SAM3:
+            if self.original_box_xyxy is None:
+                self.original_box_xyxy = self.box_xyxy
+            if self.original_class_id is None:
+                self.original_class_id = self.class_id
+            if self.original_class_name is None:
+                self.original_class_name = self.class_name
 
     @property
     def is_active(self):
         return not self.deleted
+
+    @property
+    def can_reset_to_sam3(self):
+        return self.original_box_xyxy is not None and bool(self.polygon_xyn)
 
     def edit_box(self, box_xyxy, image_width=None, image_height=None):
         if image_width is not None and image_height is not None:
@@ -74,6 +92,17 @@ class Annotation:
         if self.source in {AnnotationSource.SAM3, AnnotationSource.IMPORTED}:
             self.source = AnnotationSource.EDITED
 
+    def reset_to_sam3(self):
+        if not self.can_reset_to_sam3:
+            raise ValueError("This annotation does not have original SAM3 geometry to restore.")
+        self.box_xyxy = validate_xyxy(self.original_box_xyxy)
+        if self.original_class_id is not None:
+            self.class_id = int(self.original_class_id)
+        if self.original_class_name is not None:
+            self.class_name = self.original_class_name
+        self.source = AnnotationSource.SAM3
+        self.deleted = False
+
     def mark_deleted(self):
         self.deleted = True
 
@@ -86,6 +115,9 @@ class Annotation:
             "source": self.source.value,
             "confidence": self.confidence,
             "polygon_xyn": self.polygon_xyn,
+            "original_box_xyxy": None if self.original_box_xyxy is None else list(self.original_box_xyxy),
+            "original_class_id": self.original_class_id,
+            "original_class_name": self.original_class_name,
             "deleted": self.deleted,
         }
 
@@ -99,6 +131,13 @@ class Annotation:
             source=data.get("source", AnnotationSource.SAM3),
             confidence=data.get("confidence"),
             polygon_xyn=data.get("polygon_xyn"),
+            original_box_xyxy=(
+                None
+                if data.get("original_box_xyxy") is None
+                else tuple(data["original_box_xyxy"])
+            ),
+            original_class_id=data.get("original_class_id"),
+            original_class_name=data.get("original_class_name"),
             deleted=bool(data.get("deleted", False)),
         )
 
