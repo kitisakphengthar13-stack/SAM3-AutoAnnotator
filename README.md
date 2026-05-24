@@ -147,7 +147,8 @@ sam3-auto-annotator --help
 - Human-in-the-loop annotation workflow
 - Single-image and non-recursive folder projects
 - Editable SAM3 draft boxes
-- SAM3 mask/polygon preview for unchanged draft annotations
+- SAM3 mask/polygon preview for segmentation-valid annotations
+- Re-segment from Box to regenerate a SAM3 mask/polygon from a corrected bbox
 - Manual bounding-box draw, select, move, resize, delete, and class correction
 - Current-image SAM3 inference with predictor cache/reuse
 - Folder pre-annotation with `Run SAM3 All Remaining`
@@ -193,17 +194,21 @@ editable GUI state the source of truth for final export.
 4. Set confidence and fp16 precision as needed.
 5. Click `Run SAM3` for the selected image.
 6. Correct boxes in the canvas or Annotation tab.
+7. For poor masks, adjust the bbox and click `Re-segment from Box` to ask
+   SAM3 for a new mask/polygon from the current box prompt.
 
 The GUI caches the loaded predictor for repeated runs with the same model,
 confidence, and fp16 settings. If those settings change, the predictor is
 reloaded.
 
 SAM3 predictions may include both bounding boxes and segmentation masks/polygons.
-In the GUI, masks and polygons are preview-only: editing a SAM3 bbox or class
-makes that mask stale, hides it from the canvas, and excludes it from
-segmentation export. Use `Reset to SAM3` on a selected annotation to restore the
-original SAM3 bbox/class and make its mask/polygon preview and segmentation
-export valid again.
+In the GUI, masks and polygons are preview-only, but they can be corrected
+without manual polygon editing. Editing a bbox or class makes the existing
+segmentation stale, hides it from the canvas, and excludes it from segmentation
+export. Click `Re-segment from Box` on a selected annotation to use the current
+bbox as a SAM3 box prompt; this keeps the current bbox/class and replaces
+`polygon_xyn` with the new SAM3 polygon. Use `Reset to SAM3` on a selected
+annotation to restore the original SAM3 bbox/class/polygon.
 
 ### Batch Pre-Annotation Workflow
 
@@ -271,23 +276,23 @@ Important GUI output files:
 - `sam3_auto_annotation_box_outputs.csv`: corrected bounding-box export.
 - `yolo_labels/detection/*.txt`: corrected YOLO detection labels. Images with
   no active boxes receive empty `.txt` files.
-- `yolo_labels/segmentation/*.txt`: YOLO segmentation labels for unchanged or
-  reset SAM3 polygon annotations only. Edited, manual, and imported bbox-only
-  annotations are excluded from segmentation export.
+- `yolo_labels/segmentation/*.txt`: YOLO segmentation labels for annotations
+  with valid segmentation. Edited stale polygons and bbox-only annotations are
+  excluded from segmentation export.
 - `preview_results/*_reviewed.png`: optional reviewed preview images with
   active boxes and currently enabled preview overlays drawn over the source
   image.
 - `run_summary.json`: export summary for corrected GUI outputs.
 
 Detection export always uses the current editable bbox state. Segmentation
-export is intentionally conservative and only includes unchanged/restored SAM3
-polygons; edited masks are not inferred from corrected boxes.
+export only includes annotations marked segmentation-valid, including original
+SAM3 polygons and masks regenerated with `Re-segment from Box`.
 
 ### GUI Known Limitations
 
 - No polygon or mask editing yet.
-- No corrected segmentation editing workflow yet; SAM3 masks/polygons are
-  preview-only unless left unchanged or restored with `Reset to SAM3`.
+- Segmentation correction is box-prompt based: adjust the bbox and use
+  `Re-segment from Box` instead of manually editing large polygons.
 - `Run All Remaining` is remaining-only by default and intentionally skips
   edited/reviewed images.
 - No autosave during batch prediction.

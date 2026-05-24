@@ -92,13 +92,13 @@ class AnnotationModelTests(unittest.TestCase):
         self.assertEqual(annotation.box_xyxy, (10.0, 10.0, 50.0, 60.0))
         self.assertFalse(annotation.deleted)
 
-    def test_manual_annotation_stays_manual_after_edit(self):
+    def test_manual_annotation_becomes_edited_after_edit(self):
         image = ImageRecord("images/a.jpg", image_index=0)
         annotation = image.add_manual_annotation(1, "person", (1, 2, 11, 22))
 
         annotation.edit_box((2, 3, 12, 23))
 
-        self.assertEqual(annotation.source, AnnotationSource.MANUAL)
+        self.assertEqual(annotation.source, AnnotationSource.EDITED)
         self.assertEqual(image.status, ImageStatus.EDITED)
 
     def test_project_state_supports_single_image_and_folder_like_inputs(self):
@@ -148,6 +148,42 @@ class AnnotationModelTests(unittest.TestCase):
         self.assertEqual(len(loaded_image.annotations), 2)
         self.assertEqual(len(loaded_image.active_annotations), 1)
         self.assertEqual(loaded_image.active_annotations[0].source, AnnotationSource.MANUAL)
+
+    def test_sam3_refined_json_round_trip(self):
+        annotation = Annotation(
+            0,
+            "car",
+            (10, 10, 40, 40),
+            source=AnnotationSource.SAM3_REFINED,
+            polygon_xyn=[[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]],
+            segmentation_valid=True,
+            segmentation_source="sam3_box_prompt",
+            original_box_xyxy=(5, 5, 35, 35),
+            original_polygon_xyn=[[0.05, 0.05], [0.35, 0.05], [0.35, 0.35]],
+            original_class_id=0,
+            original_class_name="car",
+        )
+        project = ProjectState.from_image_paths(
+            input_path="images",
+            image_paths=[Path("images/a.jpg")],
+            prompts=["car"],
+        )
+        project.get_image(0).annotations.append(annotation)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_path = Path(temp_dir) / "annotation_state.json"
+            save_project_state(project, state_path)
+            loaded = load_project_state(state_path)
+
+        loaded_annotation = loaded.get_image(0).annotations[0]
+        self.assertEqual(loaded_annotation.source, AnnotationSource.SAM3_REFINED)
+        self.assertTrue(loaded_annotation.segmentation_valid)
+        self.assertEqual(loaded_annotation.segmentation_source, "sam3_box_prompt")
+        self.assertEqual(loaded_annotation.original_box_xyxy, (5.0, 5.0, 35.0, 35.0))
+        self.assertEqual(
+            loaded_annotation.original_polygon_xyn,
+            [[0.05, 0.05], [0.35, 0.05], [0.35, 0.35]],
+        )
 
 
 class ExportPreparationTests(unittest.TestCase):

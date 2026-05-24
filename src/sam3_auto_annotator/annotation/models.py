@@ -12,6 +12,7 @@ STATE_VERSION = 1
 
 class AnnotationSource(str, Enum):
     SAM3 = "sam3"
+    SAM3_REFINED = "sam3_refined"
     EDITED = "edited"
     MANUAL = "manual"
     IMPORTED = "imported"
@@ -47,7 +48,10 @@ class Annotation:
     source: AnnotationSource = AnnotationSource.SAM3
     confidence: Optional[float] = None
     polygon_xyn: Optional[List[List[float]]] = None
+    segmentation_valid: Optional[bool] = None
+    segmentation_source: Optional[str] = None
     original_box_xyxy: Optional[Tuple[float, float, float, float]] = None
+    original_polygon_xyn: Optional[List[List[float]]] = None
     original_class_id: Optional[int] = None
     original_class_name: Optional[str] = None
     deleted: bool = False
@@ -64,10 +68,22 @@ class Annotation:
         if self.source == AnnotationSource.SAM3:
             if self.original_box_xyxy is None:
                 self.original_box_xyxy = self.box_xyxy
+            if self.original_polygon_xyn is None:
+                self.original_polygon_xyn = self.polygon_xyn
             if self.original_class_id is None:
                 self.original_class_id = self.class_id
             if self.original_class_name is None:
                 self.original_class_name = self.class_name
+        if self.segmentation_valid is None:
+            self.segmentation_valid = self.source == AnnotationSource.SAM3 and bool(self.polygon_xyn)
+        else:
+            self.segmentation_valid = bool(self.segmentation_valid)
+        if self.segmentation_source is None and self.segmentation_valid:
+            self.segmentation_source = (
+                "sam3_box_prompt"
+                if self.source == AnnotationSource.SAM3_REFINED
+                else "sam3_original"
+            )
 
     @property
     def is_active(self):
@@ -75,32 +91,49 @@ class Annotation:
 
     @property
     def can_reset_to_sam3(self):
-        return self.original_box_xyxy is not None and bool(self.polygon_xyn)
+        return self.original_box_xyxy is not None and bool(self.original_polygon_xyn or self.polygon_xyn)
 
     def edit_box(self, box_xyxy, image_width=None, image_height=None):
         if image_width is not None and image_height is not None:
             self.box_xyxy = clip_xyxy(box_xyxy, image_width, image_height)
         else:
             self.box_xyxy = validate_xyxy(box_xyxy)
-        if self.source in {AnnotationSource.SAM3, AnnotationSource.IMPORTED}:
-            self.source = AnnotationSource.EDITED
+        self.source = AnnotationSource.EDITED
+        self.segmentation_valid = False
         self.deleted = False
 
     def change_class(self, class_id, class_name):
         self.class_id = int(class_id)
         self.class_name = str(class_name)
-        if self.source in {AnnotationSource.SAM3, AnnotationSource.IMPORTED}:
-            self.source = AnnotationSource.EDITED
+        self.source = AnnotationSource.EDITED
+        self.segmentation_valid = False
 
     def reset_to_sam3(self):
         if not self.can_reset_to_sam3:
             raise ValueError("This annotation does not have original SAM3 geometry to restore.")
         self.box_xyxy = validate_xyxy(self.original_box_xyxy)
+        if self.original_polygon_xyn is not None:
+            self.polygon_xyn = self.original_polygon_xyn
         if self.original_class_id is not None:
             self.class_id = int(self.original_class_id)
         if self.original_class_name is not None:
             self.class_name = self.original_class_name
         self.source = AnnotationSource.SAM3
+        self.segmentation_valid = bool(self.polygon_xyn)
+        self.segmentation_source = "sam3_original" if self.segmentation_valid else None
+        self.deleted = False
+
+    def apply_sam3_box_prompt_segmentation(self, polygon_xyn, confidence=None):
+        if not polygon_xyn or len(polygon_xyn) < 3:
+            raise ValueError("Re-segmentation requires a polygon with at least three points.")
+        if self.original_box_xyxy is not None and self.original_polygon_xyn is None:
+            self.original_polygon_xyn = self.polygon_xyn
+        self.polygon_xyn = [[float(x), float(y)] for x, y in polygon_xyn]
+        self.source = AnnotationSource.SAM3_REFINED
+        self.segmentation_valid = True
+        self.segmentation_source = "sam3_box_prompt"
+        if confidence is not None:
+            self.confidence = float(confidence)
         self.deleted = False
 
     def mark_deleted(self):
@@ -115,7 +148,10 @@ class Annotation:
             "source": self.source.value,
             "confidence": self.confidence,
             "polygon_xyn": self.polygon_xyn,
+            "segmentation_valid": self.segmentation_valid,
+            "segmentation_source": self.segmentation_source,
             "original_box_xyxy": None if self.original_box_xyxy is None else list(self.original_box_xyxy),
+            "original_polygon_xyn": self.original_polygon_xyn,
             "original_class_id": self.original_class_id,
             "original_class_name": self.original_class_name,
             "deleted": self.deleted,
@@ -131,11 +167,14 @@ class Annotation:
             source=data.get("source", AnnotationSource.SAM3),
             confidence=data.get("confidence"),
             polygon_xyn=data.get("polygon_xyn"),
+            segmentation_valid=data.get("segmentation_valid"),
+            segmentation_source=data.get("segmentation_source"),
             original_box_xyxy=(
                 None
                 if data.get("original_box_xyxy") is None
                 else tuple(data["original_box_xyxy"])
             ),
+            original_polygon_xyn=data.get("original_polygon_xyn"),
             original_class_id=data.get("original_class_id"),
             original_class_name=data.get("original_class_name"),
             deleted=bool(data.get("deleted", False)),

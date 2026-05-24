@@ -54,7 +54,11 @@ from sam3_auto_annotator.gui.project_ops import (
 from sam3_auto_annotator.gui.predictor_cache import PredictorCache
 from sam3_auto_annotator.gui.theme import APP_STYLESHEET
 from sam3_auto_annotator.gui.widgets import EmptyStateWidget, StatStrip
-from sam3_auto_annotator.gui.workers import BatchPredictionWorker, PredictionWorker
+from sam3_auto_annotator.gui.workers import (
+    BatchPredictionWorker,
+    BoxPromptSegmentationWorker,
+    PredictionWorker,
+)
 from sam3_auto_annotator.paths import validate_model_path
 
 
@@ -98,6 +102,7 @@ class MainWindow(QMainWindow):
         self.current_state_path = None
         self.prediction_worker = None
         self.batch_worker = None
+        self.box_prompt_worker = None
         self.unsaved = False
         self._updating_details = False
         self.last_export_result = None
@@ -365,15 +370,14 @@ class MainWindow(QMainWindow):
         self.show_polygons_check.setChecked(False)
         for checkbox in (self.show_boxes_check, self.show_masks_check, self.show_polygons_check):
             checkbox.setToolTip(
-                "SAM3 masks/polygons are preview-only. Editing bbox/class hides stale segmentation; "
-                "Reset to SAM3 restores it."
+                "Editing bbox/class hides stale segmentation. Re-segment from Box generates a new SAM3 mask."
             )
             checkbox.toggled.connect(self._update_canvas_overlay_visibility)
             overlay_row.addWidget(checkbox)
         overlay_row.addStretch(1)
         overlay_note = QLabel(
-            "Masks/polygons are preview-only. Detection export uses current boxes; "
-            "segmentation export uses unchanged or reset SAM3 polygons."
+            "Detection export uses current boxes. Segmentation export uses only valid masks/polygons; "
+            "Re-segment from Box replaces polygon_xyn from the current bbox."
         )
         overlay_note.setObjectName("mutedLabel")
         overlay_note.setWordWrap(True)
@@ -408,13 +412,16 @@ class MainWindow(QMainWindow):
 
         action_row = QHBoxLayout()
         self.apply_box_button = self._button("Apply Box", ICONS["draw"], self._apply_box_details)
+        self.resegment_button = self._button("Re-segment from Box", ICONS["sam3"], self.resegment_selected_from_box)
+        self.resegment_button.setToolTip("Use the current bbox as a SAM3 prompt to generate a new mask.")
         self.reset_sam3_button = self._button("Reset to SAM3", ICONS["reset"], self.reset_selected_to_sam3)
         self.reset_sam3_button.setToolTip(
-            "Restore the original SAM3 bbox/class and make its mask/polygon preview/export valid again."
+            "Restore the original SAM3 bbox/class/polygon."
         )
         self.delete_button = self._button("Delete", ICONS["trash"], self.delete_selected_annotation, "#dc2626")
         self.delete_button.setObjectName("dangerButton")
         action_row.addWidget(self.apply_box_button)
+        action_row.addWidget(self.resegment_button)
         action_row.addWidget(self.reset_sam3_button)
         action_row.addWidget(self.delete_button)
         selected_layout.addRow(action_row)
@@ -598,6 +605,7 @@ class MainWindow(QMainWindow):
             if self.project_state:
                 self.project_state.model_path = path
                 self._mark_dirty()
+            self._update_resegment_button()
 
     def _browse_output(self):
         path = QFileDialog.getExistingDirectory(self, "Select Output Folder")
@@ -617,6 +625,7 @@ class MainWindow(QMainWindow):
         self.class_combo.blockSignals(False)
         if self.project_state and prompts:
             self.project_state.prompts = prompts
+        self._update_resegment_button()
 
     def _refresh_image_list(self):
         self.image_list.blockSignals(True)
@@ -779,6 +788,7 @@ class MainWindow(QMainWindow):
         if class_index >= 0:
             self.class_combo.setCurrentIndex(class_index)
         self.reset_sam3_button.setEnabled(annotation.can_reset_to_sam3)
+        self._update_resegment_button(annotation)
         self._updating_details = False
 
     def _clear_annotation_details(self):
@@ -801,8 +811,38 @@ class MainWindow(QMainWindow):
         ):
             widget.setEnabled(enabled)
         self.reset_sam3_button.setEnabled(False)
+        self.resegment_button.setEnabled(False)
         self.class_combo.setEnabled(self.project_state is not None)
         self.delete_toolbar_button.setEnabled(enabled)
+
+    def _worker_running(self, worker):
+        return worker is not None and worker.isRunning()
+
+    def _sam3_worker_busy(self):
+        return (
+            self._worker_running(self.prediction_worker)
+            or self._worker_running(self.batch_worker)
+            or self._worker_running(self.box_prompt_worker)
+        )
+
+    def _update_resegment_button(self, annotation=None):
+        if not hasattr(self, "resegment_button"):
+            return
+        if annotation is None:
+            annotation = self.selected_annotation()
+        image = self.current_image()
+        model_path = self.model_path_edit.text().strip() if hasattr(self, "model_path_edit") else ""
+        prompts = parse_prompts(self.prompts_edit.toPlainText()) if hasattr(self, "prompts_edit") else []
+        enabled = (
+            annotation is not None
+            and annotation.is_active
+            and bool(annotation.box_xyxy)
+            and image is not None
+            and bool(model_path)
+            and bool(prompts)
+            and not self._sam3_worker_busy()
+        )
+        self.resegment_button.setEnabled(enabled)
 
     def _refresh_annotation_table(self):
         image = self.current_image()
@@ -844,6 +884,7 @@ class MainWindow(QMainWindow):
         self.canvas.select_annotation(annotation.id)
         self._refresh_annotation_table()
         self._refresh_image_list_keep_current()
+        self._show_annotation_details(annotation)
         self._mark_dirty()
 
     def _apply_box_details(self):
@@ -869,6 +910,7 @@ class MainWindow(QMainWindow):
             self.canvas.update_annotation_box(annotation)
             self._refresh_annotation_table()
             self._refresh_image_list_keep_current()
+            self._show_annotation_details(annotation)
             self._mark_dirty()
             self._set_message("Box coordinates updated.")
         except Exception as exc:
@@ -892,6 +934,93 @@ class MainWindow(QMainWindow):
             self._set_message("Restored original SAM3 box and mask/polygon preview.")
         except Exception as exc:
             self._show_error("Could not reset annotation", exc)
+
+    def resegment_selected_from_box(self):
+        annotation = self.selected_annotation()
+        image = self.current_image()
+        if annotation is None or image is None:
+            self._set_message("Select a box before re-segmenting.")
+            return
+        prompts = parse_prompts(self.prompts_edit.toPlainText())
+        if not prompts:
+            self._show_error("Missing classes", "Enter at least one class prompt before re-segmenting.")
+            self.tabs.setCurrentIndex(0)
+            return
+        model_path = self.model_path_edit.text().strip()
+        if not model_path:
+            self._show_error("Missing model path", "Select a local SAM3 model file before re-segmenting.")
+            self.tabs.setCurrentIndex(0)
+            return
+        try:
+            validate_model_path(model_path)
+        except Exception as exc:
+            self._show_error("Invalid model path", exc)
+            self.tabs.setCurrentIndex(0)
+            return
+        if self._sam3_worker_busy():
+            self._set_message("Wait for the current SAM3 task to finish before re-segmenting.")
+            return
+
+        self.project_state.prompts = prompts
+        self.project_state.model_path = model_path
+        self._set_busy(True)
+        cached = self.predictor_cache.has_predictor(model_path, self.conf_edit.value(), self.half_check.isChecked())
+        message = (
+            f"Re-segmenting {annotation.class_name} from selected box with cached model..."
+            if cached
+            else f"Loading model, then re-segmenting {annotation.class_name} from selected box..."
+        )
+        self.result_status_label.setText(message)
+        self._set_message(message)
+        self.box_prompt_worker = BoxPromptSegmentationWorker(
+            image_index=image.image_index,
+            annotation_id=annotation.id,
+            image_path=image.image_path,
+            model_path=model_path,
+            box_xyxy=annotation.box_xyxy,
+            class_name=annotation.class_name,
+            conf=self.conf_edit.value(),
+            half=self.half_check.isChecked(),
+            predictor_cache=self.predictor_cache,
+            parent=self,
+        )
+        self.box_prompt_worker.status.connect(self._prediction_status)
+        self.box_prompt_worker.finished_segmentation.connect(self._box_prompt_finished)
+        self.box_prompt_worker.failed.connect(self._box_prompt_failed)
+        self.box_prompt_worker.finished.connect(lambda: self._set_busy(False))
+        self.box_prompt_worker.start()
+
+    def _box_prompt_finished(self, image_index, annotation_id, polygon_xyn, confidence):
+        image = self.project_state.get_image(image_index)
+        annotation = next((item for item in image.annotations if item.id == annotation_id), None)
+        if annotation is None or annotation.deleted:
+            self._set_message("Re-segment result ignored because the annotation no longer exists.")
+            return
+        try:
+            annotation.apply_sam3_box_prompt_segmentation(polygon_xyn, confidence)
+            if image.status != ImageStatus.REVIEWED:
+                image.status = ImageStatus.EDITED
+            if self.current_image_index == image_index:
+                self.canvas.set_annotations(image.active_annotations)
+                self.canvas.select_annotation(annotation.id)
+                self._refresh_annotation_table()
+                self._show_annotation_details(annotation)
+            self._refresh_image_list_keep_current()
+            self._mark_dirty()
+            self._update_results_panel(status=f"Re-segmented selected box for {image.image_name}.")
+            self._set_message("New SAM3 mask/polygon is valid for preview and segmentation export.")
+        except Exception as exc:
+            self._show_error("Could not apply re-segmentation", exc)
+
+    def _box_prompt_failed(self, image_index, annotation_id, message):
+        image_name = "selected image"
+        try:
+            image_name = self.project_state.get_image(image_index).image_name
+        except Exception:
+            pass
+        status = f"Re-segmentation failed for {image_name}: {message}"
+        self._update_results_panel(status=status)
+        self._show_error("Re-segmentation failed", message)
 
     def delete_selected_annotation(self):
         annotation = self.selected_annotation()
@@ -1394,10 +1523,12 @@ class MainWindow(QMainWindow):
             self.open_output_button,
             self.open_preview_button,
             self.delete_toolbar_button,
+            self.resegment_button,
         ):
             widget.setEnabled(enabled)
         self.cancel_batch_button.setEnabled(False)
         self.class_combo.setEnabled(enabled)
+        self._update_resegment_button()
 
     def _set_busy(self, busy):
         for widget in (
@@ -1414,8 +1545,15 @@ class MainWindow(QMainWindow):
             self.export_results_button,
             self.draw_button,
             self.delete_toolbar_button,
+            self.resegment_button,
         ):
             widget.setEnabled(not busy and (self.project_state is not None or widget in (self.open_image_button, self.open_folder_button, self.open_state_button)))
+        if not busy and self.project_state is not None:
+            self._set_annotation_detail_enabled(self.selected_annotation() is not None)
+            annotation = self.selected_annotation()
+            if annotation is not None:
+                self.reset_sam3_button.setEnabled(annotation.can_reset_to_sam3)
+                self._update_resegment_button(annotation)
 
     def _set_batch_busy(self, busy):
         self._set_busy(busy)
@@ -1432,6 +1570,7 @@ class MainWindow(QMainWindow):
         if not busy and self.project_state is not None:
             self._set_project_enabled(True)
             self._set_annotation_detail_enabled(self.selected_annotation() is not None)
+            self._update_resegment_button()
 
     def _mark_dirty(self):
         self.unsaved = True

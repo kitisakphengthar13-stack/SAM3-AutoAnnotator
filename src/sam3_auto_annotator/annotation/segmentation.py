@@ -1,12 +1,9 @@
 from collections import Counter
 
-from sam3_auto_annotator.annotation.models import AnnotationSource
-
-
 def has_valid_segmentation(annotation):
     return (
         annotation.is_active
-        and annotation.source == AnnotationSource.SAM3
+        and bool(annotation.segmentation_valid)
         and bool(annotation.polygon_xyn)
     )
 

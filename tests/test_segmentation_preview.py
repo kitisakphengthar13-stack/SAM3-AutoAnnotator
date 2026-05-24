@@ -9,7 +9,10 @@ from sam3_auto_annotator.annotation.models import (
     ImageRecord,
     ProjectState,
 )
-from sam3_auto_annotator.annotation.sam3 import annotations_from_sam3_result
+from sam3_auto_annotator.annotation.sam3 import (
+    annotations_from_sam3_result,
+    best_box_prompt_segmentation,
+)
 from sam3_auto_annotator.annotation.segmentation import (
     build_segmentation_rows,
     has_valid_segmentation,
@@ -38,6 +41,8 @@ class SegmentationPreviewTests(unittest.TestCase):
         annotations = annotations_from_sam3_result(FakeResult(), ["car"])
 
         self.assertEqual(len(annotations), 1)
+        self.assertTrue(annotations[0].segmentation_valid)
+        self.assertEqual(annotations[0].segmentation_source, "sam3_original")
         self.assertEqual(
             annotations[0].polygon_xyn,
             [[0.1, 0.2], [0.5, 0.2], [0.5, 0.8], [0.1, 0.8]],
@@ -100,6 +105,7 @@ class SegmentationPreviewTests(unittest.TestCase):
 
         self.assertEqual(annotation.source, AnnotationSource.EDITED)
         self.assertFalse(has_valid_segmentation(annotation))
+        self.assertFalse(annotation.segmentation_valid)
         self.assertEqual(build_segmentation_rows(project), [])
 
         annotation.reset_to_sam3()
@@ -108,6 +114,7 @@ class SegmentationPreviewTests(unittest.TestCase):
         self.assertEqual(annotation.box_xyxy, (10.0, 10.0, 40.0, 40.0))
         self.assertEqual(annotation.class_id, 0)
         self.assertEqual(annotation.class_name, "car")
+        self.assertEqual(annotation.segmentation_source, "sam3_original")
         self.assertTrue(has_valid_segmentation(annotation))
         self.assertEqual(len(build_segmentation_rows(project)), 1)
 
@@ -144,6 +151,142 @@ class SegmentationPreviewTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["polygon_point_count"], 3)
         self.assertEqual(rows[0]["yolo_segmentation_line"], "0 0.100000 0.100000 0.400000 0.100000 0.400000 0.400000")
+
+    def test_resegment_update_preserves_bbox_class_and_original_metadata(self):
+        annotation = Annotation(
+            0,
+            "car",
+            (10, 10, 40, 40),
+            source=AnnotationSource.SAM3,
+            polygon_xyn=[[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]],
+            original_box_xyxy=(10, 10, 40, 40),
+            original_polygon_xyn=[[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]],
+            original_class_id=0,
+            original_class_name="car",
+        )
+        annotation.edit_box((20, 20, 60, 60), 100, 100)
+        annotation.apply_sam3_box_prompt_segmentation(
+            [[0.2, 0.2], [0.6, 0.2], [0.6, 0.6]],
+            confidence=0.8,
+        )
+
+        self.assertEqual(annotation.source, AnnotationSource.SAM3_REFINED)
+        self.assertEqual(annotation.box_xyxy, (20.0, 20.0, 60.0, 60.0))
+        self.assertEqual(annotation.class_id, 0)
+        self.assertEqual(annotation.class_name, "car")
+        self.assertEqual(annotation.original_box_xyxy, (10.0, 10.0, 40.0, 40.0))
+        self.assertEqual(
+            annotation.original_polygon_xyn,
+            [[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]],
+        )
+        self.assertTrue(annotation.segmentation_valid)
+        self.assertEqual(annotation.segmentation_source, "sam3_box_prompt")
+        self.assertTrue(has_valid_segmentation(annotation))
+
+    def test_reset_after_resegment_restores_original_polygon(self):
+        original_polygon = [[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]]
+        annotation = Annotation(
+            0,
+            "car",
+            (10, 10, 40, 40),
+            source=AnnotationSource.SAM3,
+            polygon_xyn=original_polygon,
+            original_box_xyxy=(10, 10, 40, 40),
+            original_polygon_xyn=original_polygon,
+            original_class_id=0,
+            original_class_name="car",
+        )
+        annotation.edit_box((20, 20, 60, 60), 100, 100)
+        annotation.apply_sam3_box_prompt_segmentation([[0.2, 0.2], [0.6, 0.2], [0.6, 0.6]])
+
+        annotation.reset_to_sam3()
+
+        self.assertEqual(annotation.source, AnnotationSource.SAM3)
+        self.assertEqual(annotation.box_xyxy, (10.0, 10.0, 40.0, 40.0))
+        self.assertEqual(annotation.polygon_xyn, original_polygon)
+        self.assertTrue(annotation.segmentation_valid)
+        self.assertEqual(annotation.segmentation_source, "sam3_original")
+
+    def test_refined_annotation_exports_segmentation(self):
+        project = ProjectState(
+            input_path="images",
+            prompts=["car"],
+            images=[ImageRecord("images/a.jpg", 0, width=100, height=100)],
+        )
+        project.get_image(0).annotations.append(
+            Annotation(
+                0,
+                "car",
+                (20, 20, 60, 60),
+                source=AnnotationSource.SAM3_REFINED,
+                polygon_xyn=[[0.2, 0.2], [0.6, 0.2], [0.6, 0.6]],
+                segmentation_valid=True,
+                segmentation_source="sam3_box_prompt",
+            )
+        )
+
+        rows = build_segmentation_rows(project)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["yolo_segmentation_line"], "0 0.200000 0.200000 0.600000 0.200000 0.600000 0.600000")
+
+    def test_manual_and_imported_annotations_can_become_segmentation_valid_after_resegment(self):
+        manual = Annotation(0, "car", (10, 10, 40, 40), source=AnnotationSource.MANUAL)
+        imported = Annotation(0, "car", (50, 50, 80, 80), source=AnnotationSource.IMPORTED)
+
+        manual.apply_sam3_box_prompt_segmentation([[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]])
+        imported.apply_sam3_box_prompt_segmentation([[0.5, 0.5], [0.8, 0.5], [0.8, 0.8]])
+
+        self.assertEqual(manual.source, AnnotationSource.SAM3_REFINED)
+        self.assertEqual(imported.source, AnnotationSource.SAM3_REFINED)
+        self.assertTrue(has_valid_segmentation(manual))
+        self.assertTrue(has_valid_segmentation(imported))
+
+    def test_invalid_resegment_polygon_does_not_mutate_annotation(self):
+        annotation = Annotation(
+            0,
+            "car",
+            (10, 10, 40, 40),
+            source=AnnotationSource.EDITED,
+            polygon_xyn=[[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]],
+            segmentation_valid=False,
+        )
+        before = annotation.to_dict()
+
+        with self.assertRaises(ValueError):
+            annotation.apply_sam3_box_prompt_segmentation([[0.1, 0.1], [0.4, 0.1]])
+
+        self.assertEqual(annotation.to_dict(), before)
+
+    def test_box_prompt_helper_chooses_highest_confidence_valid_polygon(self):
+        class MultiBoxes:
+            conf = [0.2, 0.9]
+
+        class MultiMasks:
+            xyn = [
+                [(0.1, 0.1), (0.2, 0.1)],
+                [(0.3, 0.3), (0.7, 0.3), (0.7, 0.7)],
+            ]
+
+        class MultiResult:
+            boxes = MultiBoxes()
+            masks = MultiMasks()
+
+        polygon, confidence = best_box_prompt_segmentation([MultiResult()])
+
+        self.assertEqual(polygon, [[0.3, 0.3], [0.7, 0.3], [0.7, 0.7]])
+        self.assertEqual(confidence, 0.9)
+
+    def test_box_prompt_helper_rejects_no_valid_polygon(self):
+        class EmptyMasks:
+            xyn = [[(0.1, 0.1), (0.2, 0.1)]]
+
+        class EmptyResult:
+            boxes = None
+            masks = EmptyMasks()
+
+        with self.assertRaises(ValueError):
+            best_box_prompt_segmentation([EmptyResult()])
 
     def test_export_writes_segmentation_only_for_untouched_sam3_polygons(self):
         project = ProjectState(

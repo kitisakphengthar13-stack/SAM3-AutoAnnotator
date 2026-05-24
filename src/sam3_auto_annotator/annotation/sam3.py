@@ -46,6 +46,45 @@ def _polygon_values(polygons, object_index):
     return [[float(x), float(y)] for x, y in polygon]
 
 
+def _confidence_values(boxes):
+    confidences = getattr(boxes, "conf", None)
+    if confidences is None:
+        return []
+    try:
+        count = len(confidences)
+    except TypeError:
+        return []
+    return [tensor_item(get_sequence_value(confidences, index)) for index in range(count)]
+
+
+def best_box_prompt_segmentation(results):
+    candidates = []
+    for result_index, result in enumerate(results or []):
+        masks = getattr(result, "masks", None)
+        polygons = getattr(masks, "xyn", None) if masks is not None else None
+        if polygons is None:
+            continue
+        boxes = getattr(result, "boxes", None)
+        confidences = _confidence_values(boxes)
+        try:
+            polygon_count = len(polygons)
+        except TypeError:
+            continue
+        for polygon_index in range(polygon_count):
+            polygon = _polygon_values(polygons, polygon_index)
+            if not polygon or len(polygon) < 3:
+                continue
+            confidence = get_sequence_value(confidences, polygon_index)
+            score = float(confidence) if confidence is not None else None
+            candidates.append((score is None, -(score or 0.0), result_index, polygon_index, polygon, score))
+
+    if not candidates:
+        raise ValueError("SAM3 did not return a valid polygon for the selected box.")
+
+    _, _, _, _, polygon, confidence = sorted(candidates)[0]
+    return polygon, confidence
+
+
 def annotations_from_sam3_result(result, prompts):
     boxes = getattr(result, "boxes", None)
     if boxes is None:
