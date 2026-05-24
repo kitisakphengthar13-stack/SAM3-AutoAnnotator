@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QSize, QUrl, Qt
-from PySide6.QtGui import QBrush, QColor, QDesktopServices, QImage, QPainter, QPen, QPolygonF
+from PySide6.QtGui import QBrush, QColor, QDesktopServices, QImage, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QFileDialog,
     QAbstractItemView,
@@ -1290,11 +1290,16 @@ class MainWindow(QMainWindow):
         output_dir = self._output_dir_or_default()
         try:
             path = save_state_to_output(self.project_state, output_dir)
+            if not Path(path).is_file():
+                raise FileNotFoundError(f"Project state was not written: {path}")
             self.current_state_path = path
             self.unsaved = False
             self._update_status_context()
-            self._update_results_panel(status="Project state saved.", output_dir=output_dir)
-            self._set_message(f"Saved annotation_state.json to {path}")
+            thumbnail_ok = self._update_results_panel(status="Project state saved.", output_dir=output_dir)
+            if thumbnail_ok:
+                self._set_message(f"Saved annotation_state.json to {path}")
+            else:
+                self._set_message("Saved/exported successfully, but preview thumbnail could not be displayed.")
         except Exception as exc:
             self._show_error("Could not save project", exc)
 
@@ -1318,11 +1323,12 @@ class MainWindow(QMainWindow):
         try:
             save_state_to_output(self.project_state, output_dir)
             result = export_project(self.project_state, output_dir)
+            self._validate_export_outputs(result)
             self.last_export_result = result
             preview_path = self.save_current_preview(silent=True)
             self.unsaved = False
             self._update_status_context()
-            self._update_results_panel(
+            thumbnail_ok = self._update_results_panel(
                 status=f"Export complete: {len(result['rows'])} active box(es).",
                 output_dir=output_dir,
                 box_csv=result["box_csv"],
@@ -1331,10 +1337,30 @@ class MainWindow(QMainWindow):
                 preview_path=preview_path,
             )
             self.tabs.setCurrentIndex(2)
-            self._set_message(f"Exported corrected labels to {output_dir}")
+            if thumbnail_ok:
+                self._set_message(f"Exported corrected labels to {output_dir}")
+            else:
+                self._set_message("Saved/exported successfully, but preview thumbnail could not be displayed.")
             QMessageBox.information(self, "Export Complete", f"Corrected labels exported to:\n{output_dir}")
         except Exception as exc:
             self._show_error("Could not export corrected labels", exc)
+
+    def _validate_export_outputs(self, result):
+        expected_files = [
+            result.get("box_csv"),
+            result.get("run_summary"),
+        ]
+        for path in expected_files:
+            if path is not None and not Path(path).is_file():
+                raise FileNotFoundError(f"Expected export file was not written: {path}")
+
+        expected_dirs = [
+            result.get("yolo_detection_dir"),
+            result.get("yolo_segmentation_dir"),
+        ]
+        for path in expected_dirs:
+            if path is not None and not Path(path).is_dir():
+                raise FileNotFoundError(f"Expected export folder was not written: {path}")
 
     def save_current_preview(self, silent=False):
         image = self.current_image()
@@ -1413,12 +1439,18 @@ class MainWindow(QMainWindow):
                 painter.drawRect(int(x1), int(y1), int(x2 - x1), int(y2 - y1))
                 painter.drawText(int(x1) + 4, max(14, int(y1) - 4), annotation.class_name)
         painter.end()
-        qimage.save(str(preview_path))
+        if not qimage.save(str(preview_path)):
+            if not silent:
+                self._show_error("Could not create preview", f"Could not save preview image: {preview_path}")
+            return None
         self.last_preview_path = preview_path
-        self._update_results_panel(preview_path=preview_path)
+        thumbnail_ok = self._update_results_panel(preview_path=preview_path)
         if not silent:
             self.tabs.setCurrentIndex(2)
-            self._set_message(f"Saved preview image: {preview_path}")
+            if thumbnail_ok:
+                self._set_message(f"Saved preview image: {preview_path}")
+            else:
+                self._set_message("Saved/exported successfully, but preview thumbnail could not be displayed.")
         return preview_path
 
     def open_preview_image(self):
@@ -1461,6 +1493,7 @@ class MainWindow(QMainWindow):
         yolo_segmentation_dir=None,
         preview_path=None,
     ):
+        thumbnail_ok = True
         if status is not None:
             self.result_status_label.setText(status)
         if output_dir is None and self.project_state is not None:
@@ -1483,17 +1516,27 @@ class MainWindow(QMainWindow):
             self.result_yolo_label.setText(yolo_text)
         if preview_path is not None:
             self.preview_label.setText(str(preview_path))
-            self._set_preview_thumbnail(preview_path)
+            thumbnail_ok = self._set_preview_thumbnail(preview_path)
         elif self.last_preview_path:
             self.preview_label.setText(str(self.last_preview_path))
-            self._set_preview_thumbnail(self.last_preview_path)
+            thumbnail_ok = self._set_preview_thumbnail(self.last_preview_path)
+        if not thumbnail_ok:
+            self._set_message("Saved/exported successfully, but preview thumbnail could not be displayed.")
+        return thumbnail_ok
 
     def _set_preview_thumbnail(self, preview_path):
-        image = QImage(str(preview_path))
-        if image.isNull():
-            return
-        pixmap = image.scaled(300, 170, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.preview_thumb.setPixmap(pixmap)
+        try:
+            image = QImage(str(preview_path))
+            if image.isNull():
+                return False
+            scaled = image.scaled(300, 170, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pixmap = QPixmap.fromImage(scaled)
+            if pixmap.isNull():
+                return False
+            self.preview_thumb.setPixmap(pixmap)
+            return True
+        except Exception:
+            return False
 
     def _refresh_image_list_keep_current(self):
         current_index = self.current_image_index

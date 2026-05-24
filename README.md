@@ -278,7 +278,8 @@ Important GUI output files:
   no active boxes receive empty `.txt` files.
 - `yolo_labels/segmentation/*.txt`: YOLO segmentation labels for annotations
   with valid segmentation. Edited stale polygons and bbox-only annotations are
-  excluded from segmentation export.
+  excluded from segmentation export. Edited, manual, and imported annotations
+  are bbox-only unless they are re-segmented from the current box.
 - `preview_results/*_reviewed.png`: optional reviewed preview images with
   active boxes and currently enabled preview overlays drawn over the source
   image.

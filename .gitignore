@@ -12,6 +12,7 @@ ENV/
 # Python tooling/cache
 .python-version
 .pytest_cache/
+.pytest_tmp/
 .mypy_cache/
 .ruff_cache/
 .coverage
@@ -40,6 +41,12 @@ desktop.ini
 # Project outputs
 outputs/*
 !outputs/.gitkeep
+preview_results/
+yolo_labels/
+annotation_state.json
+run_summary.json
+sam3_auto_annotation_box_outputs.csv
+sam3_auto_annotation_xyn_outputs.csv
 
 # Local datasets / media
 data/
