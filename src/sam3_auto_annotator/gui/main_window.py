@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QSize, QUrl, Qt
@@ -88,6 +89,8 @@ STATUS_BACKGROUNDS = {
     ImageStatus.NO_DETECTION: "#f5f3ff",
     ImageStatus.ERROR: "#fef2f2",
 }
+
+logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
@@ -916,6 +919,30 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             self._show_error("Invalid box coordinates", exc)
 
+    def _box_details_values(self):
+        return (
+            self.x1_edit.value(),
+            self.y1_edit.value(),
+            self.x2_edit.value(),
+            self.y2_edit.value(),
+        )
+
+    def _sync_selected_box_details_for_resegment(self, annotation, image):
+        before_box = annotation.box_xyxy
+        details_box = self._box_details_values()
+        if all(abs(old - new) < 1e-9 for old, new in zip(before_box, details_box)):
+            return before_box, annotation.box_xyxy
+
+        annotation.edit_box(details_box, image.width, image.height)
+        if image.status != ImageStatus.REVIEWED:
+            image.status = ImageStatus.EDITED
+        self.canvas.update_annotation_box(annotation)
+        self._refresh_annotation_table()
+        self._refresh_image_list_keep_current()
+        self._show_annotation_details(annotation)
+        self._mark_dirty()
+        return before_box, annotation.box_xyxy
+
     def reset_selected_to_sam3(self):
         annotation = self.selected_annotation()
         image = self.current_image()
@@ -961,9 +988,31 @@ class MainWindow(QMainWindow):
             self._set_message("Wait for the current SAM3 task to finish before re-segmenting.")
             return
 
+        try:
+            bbox_before_ui_sync, bbox_after_ui_sync = self._sync_selected_box_details_for_resegment(annotation, image)
+        except Exception as exc:
+            self._show_error("Invalid box coordinates", exc)
+            return
+
         self.project_state.prompts = prompts
         self.project_state.model_path = model_path
         self._set_busy(True)
+        transform = self.canvas.transform()
+        logger.debug(
+            "Re-segment requested annotation_id=%s class_name=%r source=%s "
+            "bbox_before_ui_edit=%s bbox_after_ui_edit=%s bbox_sent=%s "
+            "image_shape=(height=%s,width=%s) canvas_scale=(x=%s,y=%s)",
+            annotation.id,
+            annotation.class_name,
+            annotation.source.value,
+            bbox_before_ui_sync,
+            bbox_after_ui_sync,
+            annotation.box_xyxy,
+            image.height,
+            image.width,
+            transform.m11(),
+            transform.m22(),
+        )
         cached = self.predictor_cache.has_predictor(model_path, self.conf_edit.value(), self.half_check.isChecked())
         message = (
             f"Re-segmenting {annotation.class_name} from selected box with cached model..."
@@ -990,14 +1039,30 @@ class MainWindow(QMainWindow):
         self.box_prompt_worker.finished.connect(lambda: self._set_busy(False))
         self.box_prompt_worker.start()
 
-    def _box_prompt_finished(self, image_index, annotation_id, polygon_xyn, confidence):
+    def _box_prompt_finished(self, image_index, annotation_id, bbox_sent, polygon_xyn, confidence):
         image = self.project_state.get_image(image_index)
         annotation = next((item for item in image.annotations if item.id == annotation_id), None)
         if annotation is None or annotation.deleted:
             self._set_message("Re-segment result ignored because the annotation no longer exists.")
             return
+        if any(abs(current - sent) > 1e-6 for current, sent in zip(annotation.box_xyxy, bbox_sent)):
+            self._set_message("Re-segment result ignored because the bbox changed while SAM3 was running.")
+            return
         try:
             annotation.apply_sam3_box_prompt_segmentation(polygon_xyn, confidence)
+            logger.debug(
+                "Re-segment applied annotation_id=%s class_name=%r source=%s "
+                "bbox=%s segmentation_valid=%s segmentation_source=%s "
+                "polygon_point_count=%s keys=%s",
+                annotation.id,
+                annotation.class_name,
+                annotation.source.value,
+                annotation.box_xyxy,
+                annotation.segmentation_valid,
+                annotation.segmentation_source,
+                len(annotation.polygon_xyn or []),
+                sorted(annotation.to_dict().keys()),
+            )
             if image.status != ImageStatus.REVIEWED:
                 image.status = ImageStatus.EDITED
             if self.current_image_index == image_index:

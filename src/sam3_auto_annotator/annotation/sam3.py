@@ -1,4 +1,9 @@
+import logging
+
 from sam3_auto_annotator.annotation.models import Annotation, AnnotationSource
+
+
+logger = logging.getLogger(__name__)
 
 
 def tensor_item(value, default=None):
@@ -57,6 +62,24 @@ def _confidence_values(boxes):
     return [tensor_item(get_sequence_value(confidences, index)) for index in range(count)]
 
 
+def _mask_debug_values(masks, object_index):
+    data = getattr(masks, "data", None)
+    mask = get_sequence_value(data, object_index)
+    if mask is None:
+        return None, None
+    shape = tuple(int(value) for value in getattr(mask, "shape", ()) or ())
+    try:
+        area = float(mask.sum().item())
+    except AttributeError:
+        try:
+            area = float(mask.sum())
+        except Exception:
+            area = None
+    except Exception:
+        area = None
+    return shape, area
+
+
 def best_box_prompt_segmentation(results):
     candidates = []
     for result_index, result in enumerate(results or []):
@@ -76,12 +99,35 @@ def best_box_prompt_segmentation(results):
                 continue
             confidence = get_sequence_value(confidences, polygon_index)
             score = float(confidence) if confidence is not None else None
-            candidates.append((score is None, -(score or 0.0), result_index, polygon_index, polygon, score))
+            mask_shape, mask_area = _mask_debug_values(masks, polygon_index)
+            candidates.append(
+                (
+                    score is None,
+                    -(score or 0.0),
+                    result_index,
+                    polygon_index,
+                    polygon,
+                    score,
+                    mask_shape,
+                    mask_area,
+                )
+            )
 
     if not candidates:
+        logger.debug("SAM3 box prompt returned no valid polygon candidates.")
         raise ValueError("SAM3 did not return a valid polygon for the selected box.")
 
-    _, _, _, _, polygon, confidence = sorted(candidates)[0]
+    _, _, result_index, polygon_index, polygon, confidence, mask_shape, mask_area = sorted(candidates)[0]
+    logger.debug(
+        "SAM3 box prompt selected result_index=%s polygon_index=%s confidence=%s "
+        "mask_shape=%s mask_area=%s polygon_point_count=%s",
+        result_index,
+        polygon_index,
+        confidence,
+        mask_shape,
+        mask_area,
+        len(polygon),
+    )
     return polygon, confidence
 
 

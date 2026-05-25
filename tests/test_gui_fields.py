@@ -9,7 +9,7 @@ try:
     from PySide6.QtGui import QColor, QImage
     from PySide6.QtWidgets import QApplication
 
-    from sam3_auto_annotator.annotation.models import Annotation
+    from sam3_auto_annotator.annotation.models import Annotation, ImageRecord, ImageStatus, ProjectState
     from sam3_auto_annotator.gui.fields import NumericLineEdit, configure_c_locale
     from sam3_auto_annotator.gui.icons import ICONS, icon
     from sam3_auto_annotator.gui.image_canvas import AnnotationRectItem
@@ -26,6 +26,9 @@ except ImportError:  # pragma: no cover - optional GUI dependency
     ICONS = None
     icon = None
     AnnotationRectItem = None
+    ImageRecord = None
+    ImageStatus = None
+    ProjectState = None
     MainWindow = None
 
 
@@ -60,6 +63,106 @@ class GuiFieldTests(unittest.TestCase):
             self.assertTrue(window._set_preview_thumbnail(image_path))
             self.assertFalse(window.preview_thumb.pixmap().isNull())
             self.assertFalse(window._set_preview_thumbnail(Path(temp_dir) / "missing.png"))
+
+    def test_resegment_syncs_pending_detail_box_before_worker_start(self):
+        window = MainWindow()
+        image = ImageRecord("traffic.jpg", 0, width=800, height=600)
+        annotation = Annotation(0, "traffic sign", (10, 20, 30, 40), id="ann-1")
+        image.annotations.append(annotation)
+        window.current_image = lambda: image
+
+        window.x1_edit.set_value(351.0)
+        window.y1_edit.set_value(182.75)
+        window.x2_edit.set_value(378.82)
+        window.y2_edit.set_value(214.08)
+
+        before_box, after_box = window._sync_selected_box_details_for_resegment(annotation, image)
+
+        self.assertEqual(before_box, (10.0, 20.0, 30.0, 40.0))
+        self.assertEqual(after_box, (351.0, 182.75, 378.82, 214.08))
+        self.assertEqual(annotation.box_xyxy, after_box)
+        self.assertEqual(annotation.source.value, "edited")
+        self.assertFalse(annotation.segmentation_valid)
+        self.assertEqual(image.status, ImageStatus.EDITED)
+
+    def test_resegment_syncs_subpixel_detail_box_edits(self):
+        window = MainWindow()
+        image = ImageRecord("traffic.jpg", 0, width=800, height=600)
+        annotation = Annotation(0, "traffic sign", (351.0, 182.75, 378.82, 214.08), id="ann-1")
+        image.annotations.append(annotation)
+        window.current_image = lambda: image
+
+        window.x1_edit.set_value(351.25)
+        window.y1_edit.set_value(182.95)
+        window.x2_edit.set_value(378.95)
+        window.y2_edit.set_value(214.25)
+
+        _, after_box = window._sync_selected_box_details_for_resegment(annotation, image)
+
+        self.assertEqual(after_box, (351.25, 182.95, 378.95, 214.25))
+        self.assertEqual(annotation.box_xyxy, after_box)
+
+    def test_resegment_invalid_detail_box_leaves_annotation_unchanged(self):
+        window = MainWindow()
+        image = ImageRecord("traffic.jpg", 0, width=800, height=600)
+        annotation = Annotation(0, "traffic sign", (351.0, 182.75, 378.82, 214.08), id="ann-1")
+        image.annotations.append(annotation)
+        window.current_image = lambda: image
+        before = annotation.to_dict()
+
+        window.x1_edit.set_value(378.82)
+        window.y1_edit.set_value(182.75)
+        window.x2_edit.set_value(351.0)
+        window.y2_edit.set_value(214.08)
+
+        with self.assertRaises(ValueError):
+            window._sync_selected_box_details_for_resegment(annotation, image)
+
+        self.assertEqual(annotation.to_dict(), before)
+
+    def test_resegment_detail_box_is_clamped_to_image_bounds_before_worker_start(self):
+        window = MainWindow()
+        image = ImageRecord("traffic.jpg", 0, width=800, height=600)
+        annotation = Annotation(0, "traffic sign", (351.0, 182.75, 378.82, 214.08), id="ann-1")
+        image.annotations.append(annotation)
+        window.current_image = lambda: image
+
+        window.x1_edit.set_value(0.0)
+        window.y1_edit.set_value(0.0)
+        window.x2_edit.set_value(900.0)
+        window.y2_edit.set_value(700.0)
+
+        _, after_box = window._sync_selected_box_details_for_resegment(annotation, image)
+
+        self.assertEqual(after_box, (0.0, 0.0, 800.0, 600.0))
+        self.assertEqual(annotation.box_xyxy, after_box)
+
+    def test_resegment_worker_result_is_ignored_if_bbox_changed_while_running(self):
+        window = MainWindow()
+        annotation = Annotation(
+            0,
+            "traffic sign",
+            (351.0, 182.75, 378.82, 214.08),
+            id="ann-1",
+            polygon_xyn=[[0.1, 0.1], [0.2, 0.1], [0.2, 0.2]],
+            segmentation_valid=False,
+        )
+        image = ImageRecord("traffic.jpg", 0, width=800, height=600, annotations=[annotation])
+        window.project_state = ProjectState("images", ["traffic sign"], [image])
+        annotation.edit_box((360.0, 190.0, 390.0, 225.0), image.width, image.height)
+        before = annotation.to_dict()
+
+        window._box_prompt_finished(
+            image.image_index,
+            annotation.id,
+            (351.0, 182.75, 378.82, 214.08),
+            [[0.4, 0.4], [0.5, 0.4], [0.5, 0.5]],
+            0.9,
+        )
+
+        self.assertEqual(annotation.to_dict(), before)
+        self.assertFalse(window.unsaved)
+        self.assertIn("bbox changed", window.statusBar().currentMessage())
 
     def test_annotation_rect_resize_clips_to_image_bounds(self):
         annotation = Annotation(0, "object", (10, 10, 50, 50))

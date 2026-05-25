@@ -1,3 +1,5 @@
+import logging
+
 from PySide6.QtCore import QThread, Signal
 
 from sam3_auto_annotator.annotation.sam3 import (
@@ -6,6 +8,9 @@ from sam3_auto_annotator.annotation.sam3 import (
     result_image_size,
 )
 from sam3_auto_annotator.gui.predictor_cache import PredictorCache
+
+
+logger = logging.getLogger(__name__)
 
 
 class PredictionWorker(QThread):
@@ -59,7 +64,7 @@ class PredictionWorker(QThread):
 
 
 class BoxPromptSegmentationWorker(QThread):
-    finished_segmentation = Signal(int, str, list, object)
+    finished_segmentation = Signal(int, str, tuple, list, object)
     failed = Signal(int, str, str)
     status = Signal(str)
 
@@ -103,16 +108,43 @@ class BoxPromptSegmentationWorker(QThread):
                 if reused
                 else "Running SAM3 box-prompt segmentation..."
             )
+            logger.debug(
+                "Re-segment worker starting image_index=%s annotation_id=%s "
+                "image_path=%s class_name=%r bbox_sent=%s conf=%s half=%s reused=%s",
+                self.image_index,
+                self.annotation_id,
+                self.image_path,
+                self.class_name,
+                self.box_xyxy,
+                self.conf,
+                self.half,
+                reused,
+            )
             predictor.set_image(str(self.image_path))
             results = predictor(bboxes=[self.box_xyxy], text=[self.class_name])
             polygon_xyn, confidence = best_box_prompt_segmentation(results)
+            logger.debug(
+                "Re-segment worker finished image_index=%s annotation_id=%s "
+                "polygon_point_count=%s confidence=%s",
+                self.image_index,
+                self.annotation_id,
+                len(polygon_xyn or []),
+                confidence,
+            )
             self.finished_segmentation.emit(
                 self.image_index,
                 self.annotation_id,
+                self.box_xyxy,
                 polygon_xyn,
                 confidence,
             )
         except Exception as exc:
+            logger.exception(
+                "Re-segment worker failed image_index=%s annotation_id=%s bbox_sent=%s",
+                self.image_index,
+                self.annotation_id,
+                self.box_xyxy,
+            )
             self.failed.emit(self.image_index, self.annotation_id, str(exc))
 
 
