@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import re
 from pathlib import Path
 
 from sam3_auto_annotator.annotation.converters import (
@@ -58,6 +59,15 @@ class GeometryTests(unittest.TestCase):
             validate_xyxy((10, 10, 10, 20))
         with self.assertRaises(ValueError):
             validate_xyxy((30, 20, 10, 40))
+
+
+class DocumentationTests(unittest.TestCase):
+    def test_readme_uses_polygon_xyn_not_polygon_xy_schema_name(self):
+        readme = Path(__file__).resolve().parents[1] / "README.md"
+        text = readme.read_text(encoding="utf-8")
+
+        self.assertIn("polygon_xyn", text)
+        self.assertIsNone(re.search(r"\bpolygon_xy\b(?!n)", text))
 
 
 class AnnotationModelTests(unittest.TestCase):

@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,8 +16,10 @@ from sam3_auto_annotator.annotation.sam3 import (
 )
 from sam3_auto_annotator.annotation.segmentation import (
     build_segmentation_rows,
+    build_skipped_segmentation_rows,
     has_valid_segmentation,
     polygon_xyn_to_pixels,
+    segmentation_status,
 )
 
 
@@ -230,6 +233,36 @@ class SegmentationPreviewTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["yolo_segmentation_line"], "0 0.200000 0.200000 0.600000 0.200000 0.600000 0.600000")
 
+    def test_segmentation_status_distinguishes_valid_stale_none_and_invalid(self):
+        valid = Annotation(
+            0,
+            "car",
+            (10, 10, 40, 40),
+            source=AnnotationSource.SAM3,
+            polygon_xyn=[[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]],
+        )
+        stale = Annotation(
+            0,
+            "car",
+            (10, 10, 40, 40),
+            source=AnnotationSource.SAM3,
+            polygon_xyn=[[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]],
+        )
+        stale.edit_box((12, 12, 42, 42), 100, 100)
+        none = Annotation(0, "car", (10, 10, 40, 40), source=AnnotationSource.MANUAL)
+        invalid = Annotation(
+            0,
+            "car",
+            (10, 10, 40, 40),
+            source=AnnotationSource.SAM3,
+            polygon_xyn=[[0.1, 0.1], [0.4, 0.1]],
+        )
+
+        self.assertEqual(segmentation_status(valid), "valid")
+        self.assertEqual(segmentation_status(stale), "stale")
+        self.assertEqual(segmentation_status(none), "none")
+        self.assertEqual(segmentation_status(invalid), "invalid")
+
     def test_manual_and_imported_annotations_can_become_segmentation_valid_after_resegment(self):
         manual = Annotation(0, "car", (10, 10, 40, 40), source=AnnotationSource.MANUAL)
         imported = Annotation(0, "car", (50, 50, 80, 80), source=AnnotationSource.IMPORTED)
@@ -314,6 +347,56 @@ class SegmentationPreviewTests(unittest.TestCase):
 
             self.assertIn("0 0.100000 0.100000 0.400000", segmentation_path.read_text(encoding="utf-8"))
             self.assertIn("0 0.250000 0.250000 0.300000 0.300000", detection_path.read_text(encoding="utf-8"))
+
+    def test_export_reports_skipped_segmentation_reasons(self):
+        project = ProjectState(
+            input_path="images",
+            prompts=["car"],
+            images=[ImageRecord("images/a.jpg", 0, width=100, height=100)],
+        )
+        valid = Annotation(
+            0,
+            "car",
+            (10, 10, 40, 40),
+            source=AnnotationSource.SAM3,
+            polygon_xyn=[[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]],
+        )
+        stale = Annotation(
+            0,
+            "car",
+            (20, 20, 60, 60),
+            source=AnnotationSource.SAM3,
+            polygon_xyn=[[0.2, 0.2], [0.6, 0.2], [0.6, 0.6]],
+        )
+        stale.edit_box((22, 22, 62, 62), 100, 100)
+        none = Annotation(0, "car", (50, 50, 80, 80), source=AnnotationSource.MANUAL)
+        invalid = Annotation(
+            0,
+            "car",
+            (5, 5, 20, 20),
+            source=AnnotationSource.SAM3,
+            polygon_xyn=[[0.05, 0.05], [0.2, 0.2]],
+        )
+        project.get_image(0).annotations.extend([valid, stale, none, invalid])
+
+        skipped_rows = build_skipped_segmentation_rows(project)
+
+        self.assertEqual([row["reason"] for row in skipped_rows], [
+            "segmentation stale after bbox/class edit",
+            "no polygon",
+            "polygon has too few points",
+        ])
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = export_corrected_detection(project, Path(temp_dir))
+            report_path = result["segmentation_skipped_report"]
+
+            self.assertEqual(len(result["segmentation_rows"]), 1)
+            self.assertEqual(len(result["skipped_segmentation_rows"]), 3)
+            self.assertTrue(report_path.exists())
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(report["total_skipped_segmentations"], 3)
+            self.assertEqual(report["skipped_segmentations"][0]["annotation_id"], stale.id)
 
 
 if __name__ == "__main__":

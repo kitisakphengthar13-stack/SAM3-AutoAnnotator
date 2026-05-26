@@ -38,6 +38,8 @@ from sam3_auto_annotator.annotation.models import ImageStatus
 from sam3_auto_annotator.annotation.segmentation import (
     has_valid_segmentation,
     polygon_xyn_to_pixels,
+    segmentation_status,
+    segmentation_status_text,
 )
 from sam3_auto_annotator.annotation.yolo_importer import import_yolo_detection_labels
 from sam3_auto_annotator.gui.fields import NumericLineEdit, configure_c_locale
@@ -400,8 +402,11 @@ class MainWindow(QMainWindow):
         selected_layout.addRow(self.apply_class_button)
         self.source_label = QLabel("-")
         self.confidence_label = QLabel("-")
+        self.segmentation_label = QLabel("Segmentation: none")
+        self.segmentation_label.setWordWrap(True)
         selected_layout.addRow(self._form_label("Source"), self.source_label)
         selected_layout.addRow(self._form_label("Confidence"), self.confidence_label)
+        selected_layout.addRow(self._form_label("Segmentation"), self.segmentation_label)
 
         self.x1_edit = self._coord_edit()
         self.y1_edit = self._coord_edit()
@@ -443,8 +448,8 @@ class MainWindow(QMainWindow):
 
         table_group = QGroupBox("Current Image Annotations")
         table_layout = QVBoxLayout(table_group)
-        self.annotation_table = QTableWidget(0, 5)
-        self.annotation_table.setHorizontalHeaderLabels(["Class", "Source", "Conf", "Top-left", "Bottom-right"])
+        self.annotation_table = QTableWidget(0, 6)
+        self.annotation_table.setHorizontalHeaderLabels(["Class", "Source", "Seg", "Conf", "Top-left", "Bottom-right"])
         self.annotation_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.annotation_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.annotation_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -453,8 +458,9 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.Stretch)
+        header.setSectionResizeMode(5, QHeaderView.Stretch)
         self.annotation_table.itemSelectionChanged.connect(self._on_table_selection)
         table_layout.addWidget(self.annotation_table)
         layout.addWidget(table_group, stretch=1)
@@ -477,12 +483,18 @@ class MainWindow(QMainWindow):
         self.result_csv_label.setWordWrap(True)
         self.result_yolo_label = QLabel("-")
         self.result_yolo_label.setWordWrap(True)
+        self.result_counts_label = QLabel("-")
+        self.result_counts_label.setWordWrap(True)
+        self.result_skipped_label = QLabel("-")
+        self.result_skipped_label.setWordWrap(True)
         self.preview_label = QLabel("-")
         self.preview_label.setWordWrap(True)
         summary_layout.addRow(self._form_label("Status"), self.result_status_label)
         summary_layout.addRow(self._form_label("Output"), self.result_output_label)
         summary_layout.addRow(self._form_label("Box CSV"), self.result_csv_label)
         summary_layout.addRow(self._form_label("YOLO labels"), self.result_yolo_label)
+        summary_layout.addRow(self._form_label("Counts"), self.result_counts_label)
+        summary_layout.addRow(self._form_label("Skipped Seg"), self.result_skipped_label)
         summary_layout.addRow(self._form_label("Preview"), self.preview_label)
         layout.addWidget(summary_group)
 
@@ -766,6 +778,7 @@ class MainWindow(QMainWindow):
                     self._refresh_image_list_keep_current()
                     self._show_annotation_details(annotation)
                     self._mark_dirty()
+                    self._set_message("Box edited. Mask/polygon is stale until you click Re-segment from Box.")
                 except Exception as exc:
                     self._show_error("Could not update annotation", exc)
                 return
@@ -794,6 +807,7 @@ class MainWindow(QMainWindow):
         self.selection_label.setText("Editing selected box")
         self.source_label.setText(annotation.source.value)
         self.confidence_label.setText("-" if annotation.confidence is None else f"{annotation.confidence:.4f}")
+        self.segmentation_label.setText(segmentation_status_text(annotation))
         self.x1_edit.set_value(x1)
         self.y1_edit.set_value(y1)
         self.x2_edit.set_value(x2)
@@ -809,6 +823,7 @@ class MainWindow(QMainWindow):
         self.selection_label.setText("No annotation selected")
         self.source_label.setText("-")
         self.confidence_label.setText("-")
+        self.segmentation_label.setText("Segmentation: none")
         for edit in (self.x1_edit, self.y1_edit, self.x2_edit, self.y2_edit):
             edit.set_value(0)
         self._set_annotation_detail_enabled(False)
@@ -870,11 +885,12 @@ class MainWindow(QMainWindow):
             class_item.setData(Qt.UserRole, annotation.id)
             self.annotation_table.setItem(row, 0, class_item)
             self.annotation_table.setItem(row, 1, QTableWidgetItem(annotation.source.value))
+            self.annotation_table.setItem(row, 2, QTableWidgetItem(segmentation_status(annotation)))
             conf = "-" if annotation.confidence is None else f"{annotation.confidence:.3f}"
-            self.annotation_table.setItem(row, 2, QTableWidgetItem(conf))
+            self.annotation_table.setItem(row, 3, QTableWidgetItem(conf))
             x1, y1, x2, y2 = annotation.box_xyxy
-            self.annotation_table.setItem(row, 3, QTableWidgetItem(f"{x1:.1f}, {y1:.1f}"))
-            self.annotation_table.setItem(row, 4, QTableWidgetItem(f"{x2:.1f}, {y2:.1f}"))
+            self.annotation_table.setItem(row, 4, QTableWidgetItem(f"{x1:.1f}, {y1:.1f}"))
+            self.annotation_table.setItem(row, 5, QTableWidgetItem(f"{x2:.1f}, {y2:.1f}"))
 
     def _on_table_selection(self):
         selected = self.annotation_table.selectedItems()
@@ -903,6 +919,7 @@ class MainWindow(QMainWindow):
         self._refresh_image_list_keep_current()
         self._show_annotation_details(annotation)
         self._mark_dirty()
+        self._set_message("Class updated. Existing segmentation is stale until you re-segment.")
 
     def _apply_box_details(self):
         if self._updating_details:
@@ -929,7 +946,7 @@ class MainWindow(QMainWindow):
             self._refresh_image_list_keep_current()
             self._show_annotation_details(annotation)
             self._mark_dirty()
-            self._set_message("Box coordinates updated.")
+            self._set_message("Box edited. Mask/polygon is stale until you click Re-segment from Box.")
         except Exception as exc:
             self._show_error("Invalid box coordinates", exc)
 
@@ -977,10 +994,13 @@ class MainWindow(QMainWindow):
             self._show_error("Could not reset annotation", exc)
 
     def resegment_selected_from_box(self):
-        annotation = self.selected_annotation()
         image = self.current_image()
-        if annotation is None or image is None:
-            self._set_message("Select a box before re-segmenting.")
+        if image is None:
+            self._set_message("Open an image before re-segmenting.")
+            return
+        annotation = self.selected_annotation()
+        if annotation is None:
+            self._set_message("Select an annotation before re-segmenting.")
             return
         prompts = parse_prompts(self.prompts_edit.toPlainText())
         if not prompts:
@@ -989,7 +1009,7 @@ class MainWindow(QMainWindow):
             return
         model_path = self.model_path_edit.text().strip()
         if not model_path:
-            self._show_error("Missing model path", "Select a local SAM3 model file before re-segmenting.")
+            self._show_error("Missing model path", "Select a SAM3 model before re-segmenting.")
             self.tabs.setCurrentIndex(0)
             return
         try:
@@ -1005,7 +1025,7 @@ class MainWindow(QMainWindow):
         try:
             bbox_before_ui_sync, bbox_after_ui_sync = self._sync_selected_box_details_for_resegment(annotation, image)
         except Exception as exc:
-            self._show_error("Invalid box coordinates", exc)
+            self._show_error("Invalid box coordinates", "Fix the bounding box coordinates before re-segmenting.")
             return
 
         self.project_state.prompts = prompts
@@ -1079,15 +1099,15 @@ class MainWindow(QMainWindow):
             )
             if image.status != ImageStatus.REVIEWED:
                 image.status = ImageStatus.EDITED
+            self._refresh_image_list_keep_current()
             if self.current_image_index == image_index:
                 self.canvas.set_annotations(image.active_annotations)
                 self.canvas.select_annotation(annotation.id)
                 self._refresh_annotation_table()
                 self._show_annotation_details(annotation)
-            self._refresh_image_list_keep_current()
             self._mark_dirty()
             self._update_results_panel(status=f"Re-segmented selected box for {image.image_name}.")
-            self._set_message("New SAM3 mask/polygon is valid for preview and segmentation export.")
+            self._set_message("Mask/polygon updated from selected box.")
         except Exception as exc:
             self._show_error("Could not apply re-segmentation", exc)
 
@@ -1097,6 +1117,8 @@ class MainWindow(QMainWindow):
             image_name = self.project_state.get_image(image_index).image_name
         except Exception:
             pass
+        if "valid polygon" in str(message):
+            message = "SAM3 did not produce a valid polygon for this box. Try a tighter or slightly larger box."
         status = f"Re-segmentation failed for {image_name}: {message}"
         self._update_results_panel(status=status)
         self._show_error("Re-segmentation failed", message)
@@ -1408,15 +1430,29 @@ class MainWindow(QMainWindow):
             self.unsaved = False
             self._update_status_context()
             thumbnail_ok = self._update_results_panel(
-                status=f"Export complete: {len(result['rows'])} active box(es).",
+                status=(
+                    f"Export complete: {len(result['rows'])} detection annotation(s), "
+                    f"{len(result['segmentation_rows'])} segmentation annotation(s), "
+                    f"{len(result.get('skipped_segmentation_rows', []))} skipped segmentation annotation(s)."
+                ),
                 output_dir=output_dir,
                 box_csv=result["box_csv"],
                 yolo_detection_dir=result["yolo_detection_dir"],
                 yolo_segmentation_dir=result["yolo_segmentation_dir"],
+                detection_count=len(result["rows"]),
+                segmentation_count=len(result["segmentation_rows"]),
+                skipped_segmentation_count=len(result.get("skipped_segmentation_rows", [])),
+                skipped_segmentation_report=result.get("segmentation_skipped_report"),
                 preview_path=preview_path,
             )
             self.tabs.setCurrentIndex(2)
-            if thumbnail_ok:
+            skipped_count = len(result.get("skipped_segmentation_rows", []))
+            if skipped_count:
+                self._set_message(
+                    f"Segmentation export skipped {skipped_count} annotation(s). "
+                    "Re-segment stale boxes before exporting segmentation labels."
+                )
+            elif thumbnail_ok:
                 self._set_message(f"Exported corrected labels to {output_dir}")
             else:
                 self._set_message("Saved/exported successfully, but preview thumbnail could not be displayed.")
@@ -1428,6 +1464,7 @@ class MainWindow(QMainWindow):
         expected_files = [
             result.get("box_csv"),
             result.get("run_summary"),
+            result.get("segmentation_skipped_report"),
         ]
         for path in expected_files:
             if path is not None and not Path(path).is_file():
@@ -1569,6 +1606,10 @@ class MainWindow(QMainWindow):
         box_csv=None,
         yolo_detection_dir=None,
         yolo_segmentation_dir=None,
+        detection_count=None,
+        segmentation_count=None,
+        skipped_segmentation_count=None,
+        skipped_segmentation_report=None,
         preview_path=None,
     ):
         thumbnail_ok = True
@@ -1592,6 +1633,28 @@ class MainWindow(QMainWindow):
             if self.last_export_result.get("yolo_segmentation_dir") is not None:
                 yolo_text += f"\nSegmentation: {self.last_export_result['yolo_segmentation_dir']}"
             self.result_yolo_label.setText(yolo_text)
+        if detection_count is not None and segmentation_count is not None and skipped_segmentation_count is not None:
+            self.result_counts_label.setText(
+                f"Detection: {detection_count}\n"
+                f"Segmentation: {segmentation_count}\n"
+                f"Skipped segmentation: {skipped_segmentation_count}"
+            )
+        elif self.last_export_result:
+            self.result_counts_label.setText(
+                f"Detection: {len(self.last_export_result['rows'])}\n"
+                f"Segmentation: {len(self.last_export_result['segmentation_rows'])}\n"
+                f"Skipped segmentation: {len(self.last_export_result.get('skipped_segmentation_rows', []))}"
+            )
+        if skipped_segmentation_report is not None:
+            self.result_skipped_label.setText(str(skipped_segmentation_report))
+        elif skipped_segmentation_count == 0:
+            self.result_skipped_label.setText("No skipped segmentation annotations.")
+        elif self.last_export_result:
+            report = self.last_export_result.get("segmentation_skipped_report")
+            skipped = len(self.last_export_result.get("skipped_segmentation_rows", []))
+            self.result_skipped_label.setText(
+                str(report) if report is not None else f"{skipped} skipped segmentation annotation(s)."
+            )
         if preview_path is not None:
             self.preview_label.setText(str(preview_path))
             thumbnail_ok = self._set_preview_thumbnail(preview_path)

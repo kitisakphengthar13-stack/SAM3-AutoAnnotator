@@ -9,7 +9,13 @@ try:
     from PySide6.QtGui import QColor, QImage
     from PySide6.QtWidgets import QApplication
 
-    from sam3_auto_annotator.annotation.models import Annotation, ImageRecord, ImageStatus, ProjectState
+    from sam3_auto_annotator.annotation.models import (
+        Annotation,
+        AnnotationSource,
+        ImageRecord,
+        ImageStatus,
+        ProjectState,
+    )
     from sam3_auto_annotator.gui.fields import NumericLineEdit, configure_c_locale
     from sam3_auto_annotator.gui.icons import ICONS, icon
     from sam3_auto_annotator.gui.image_canvas import AnnotationRectItem, ImageCanvas
@@ -22,6 +28,7 @@ except ImportError:  # pragma: no cover - optional GUI dependency
     QPointF = None
     QRectF = None
     Annotation = None
+    AnnotationSource = None
     NumericLineEdit = None
     configure_c_locale = None
     ICONS = None
@@ -94,6 +101,37 @@ class GuiFieldTests(unittest.TestCase):
         self.assertEqual(window.reset_sam3_button.toolTip(), "Restore the original SAM3 annotation.")
         self.assertEqual(window.delete_button.toolTip(), "Delete the selected annotation.")
 
+    def test_annotation_table_and_details_show_segmentation_status(self):
+        window = MainWindow()
+        valid = Annotation(
+            0,
+            "car",
+            (10, 10, 40, 40),
+            id="valid",
+            source=AnnotationSource.SAM3,
+            polygon_xyn=[[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]],
+        )
+        none = Annotation(0, "car", (50, 50, 80, 80), id="none", source=AnnotationSource.MANUAL)
+        invalid = Annotation(
+            0,
+            "car",
+            (5, 5, 20, 20),
+            id="invalid",
+            source=AnnotationSource.SAM3,
+            polygon_xyn=[[0.05, 0.05], [0.2, 0.2]],
+        )
+        image = ImageRecord("image.png", 0, width=100, height=100, annotations=[valid, none, invalid])
+        window.project_state = ProjectState("images", ["car"], [image])
+        window.current_image_index = 0
+
+        window._refresh_annotation_table()
+        window._show_annotation_details(valid)
+
+        self.assertEqual(window.annotation_table.item(0, 2).text(), "valid")
+        self.assertEqual(window.annotation_table.item(1, 2).text(), "none")
+        self.assertEqual(window.annotation_table.item(2, 2).text(), "invalid")
+        self.assertEqual(window.segmentation_label.text(), "Segmentation: valid")
+
     def test_preview_thumbnail_uses_qpixmap_and_handles_invalid_images(self):
         window = MainWindow()
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -161,6 +199,108 @@ class GuiFieldTests(unittest.TestCase):
             window.canvas.set_annotations(image.active_annotations)
 
             self.assertEqual(window.selected_annotation(), annotation)
+
+    def test_bbox_edit_invalidates_segmentation_and_updates_gui_status(self):
+        window = MainWindow()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "image.png"
+            image_file = QImage(100, 80, QImage.Format_RGB32)
+            image_file.fill(QColor("#ffffff"))
+            self.assertTrue(image_file.save(str(image_path)))
+
+            annotation = Annotation(
+                0,
+                "car",
+                (10, 10, 40, 40),
+                id="ann-1",
+                source=AnnotationSource.SAM3,
+                polygon_xyn=[[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]],
+            )
+            image = ImageRecord(str(image_path), 0, width=100, height=80, annotations=[annotation])
+            window.project_state = ProjectState(str(temp_dir), ["car"], [image])
+            window.current_image_index = 0
+            window.canvas.load_image(image_path)
+            window.canvas.set_annotations(image.active_annotations)
+            window.canvas.select_annotation(annotation.id)
+            window._refresh_annotation_table()
+
+            window._annotation_box_changed(annotation.id, (12, 12, 42, 42))
+
+            self.assertFalse(annotation.segmentation_valid)
+            self.assertEqual(window.annotation_table.item(0, 2).text(), "stale")
+            self.assertIn("stale", window.segmentation_label.text())
+            self.assertIn("Mask/polygon is stale", window.statusBar().currentMessage())
+
+    def test_class_edit_invalidates_segmentation_and_updates_gui_status(self):
+        window = MainWindow()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "image.png"
+            image_file = QImage(100, 80, QImage.Format_RGB32)
+            image_file.fill(QColor("#ffffff"))
+            self.assertTrue(image_file.save(str(image_path)))
+
+            annotation = Annotation(
+                0,
+                "car",
+                (10, 10, 40, 40),
+                id="ann-1",
+                source=AnnotationSource.SAM3,
+                polygon_xyn=[[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]],
+            )
+            image = ImageRecord(str(image_path), 0, width=100, height=80, annotations=[annotation])
+            window.project_state = ProjectState(str(temp_dir), ["car", "truck"], [image])
+            window.current_image_index = 0
+            window.prompts_edit.setPlainText("car\ntruck")
+            window.canvas.load_image(image_path)
+            window.canvas.set_annotations(image.active_annotations)
+            window.canvas.select_annotation(annotation.id)
+            window.class_combo.setCurrentText("truck")
+
+            window._apply_selected_class()
+
+            self.assertEqual(annotation.class_name, "truck")
+            self.assertFalse(annotation.segmentation_valid)
+            self.assertEqual(window.annotation_table.item(0, 2).text(), "stale")
+            self.assertIn("stale", window.segmentation_label.text())
+            self.assertIn("Existing segmentation is stale", window.statusBar().currentMessage())
+
+    def test_resegment_success_updates_table_and_details_to_valid(self):
+        window = MainWindow()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "image.png"
+            image_file = QImage(100, 80, QImage.Format_RGB32)
+            image_file.fill(QColor("#ffffff"))
+            self.assertTrue(image_file.save(str(image_path)))
+
+            annotation = Annotation(
+                0,
+                "car",
+                (10, 10, 40, 40),
+                id="ann-1",
+                source=AnnotationSource.EDITED,
+                polygon_xyn=[[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]],
+                segmentation_valid=False,
+            )
+            image = ImageRecord(str(image_path), 0, width=100, height=80, annotations=[annotation])
+            window.project_state = ProjectState(str(temp_dir), ["car"], [image])
+            window.current_image_index = 0
+            window.canvas.load_image(image_path)
+            window.canvas.set_annotations(image.active_annotations)
+            window.canvas.select_annotation(annotation.id)
+
+            window._box_prompt_finished(
+                image.image_index,
+                annotation.id,
+                annotation.box_xyxy,
+                [[0.12, 0.12], [0.42, 0.12], [0.42, 0.42]],
+                0.8,
+            )
+
+            self.assertTrue(annotation.segmentation_valid)
+            self.assertEqual(annotation.source, AnnotationSource.SAM3_REFINED)
+            self.assertEqual(window.annotation_table.item(0, 2).text(), "valid")
+            self.assertEqual(window.segmentation_label.text(), "Segmentation: valid")
+            self.assertEqual(window.statusBar().currentMessage(), "Mask/polygon updated from selected box.")
 
     def test_resegment_syncs_pending_detail_box_before_worker_start(self):
         window = MainWindow()
