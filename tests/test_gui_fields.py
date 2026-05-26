@@ -14,6 +14,7 @@ try:
     from sam3_auto_annotator.gui.icons import ICONS, icon
     from sam3_auto_annotator.gui.image_canvas import AnnotationRectItem, ImageCanvas
     from sam3_auto_annotator.gui.main_window import MainWindow
+    from sam3_auto_annotator.gui.project_ops import parse_prompts
 except ImportError:  # pragma: no cover - optional GUI dependency
     QApplication = None
     QColor = None
@@ -31,6 +32,7 @@ except ImportError:  # pragma: no cover - optional GUI dependency
     ImageStatus = None
     ProjectState = None
     MainWindow = None
+    parse_prompts = None
 
 
 @unittest.skipIf(QApplication is None, "PySide6 is not installed")
@@ -52,6 +54,45 @@ class GuiFieldTests(unittest.TestCase):
 
     def test_icon_helper_returns_qicon_without_crashing(self):
         self.assertIsNotNone(icon(ICONS["image"]))
+
+    def test_classes_field_is_empty_by_default_with_placeholder(self):
+        window = MainWindow()
+
+        self.assertEqual(window.prompts_edit.toPlainText(), "")
+        self.assertEqual(
+            window.prompts_edit.placeholderText(),
+            "One class per line, or comma-separated",
+        )
+        self.assertEqual(parse_prompts(window.prompts_edit.toPlainText()), [])
+        self.assertEqual(window.class_combo.count(), 0)
+
+    def test_empty_classes_block_sam3_with_clear_message(self):
+        window = MainWindow()
+        image = ImageRecord("traffic.jpg", 0, width=800, height=600)
+        window.project_state = ProjectState("images", [], [image])
+        window.current_image_index = 0
+        messages = []
+        window._show_error = lambda title, message: messages.append((title, message))
+
+        window.run_sam3_current()
+
+        self.assertEqual(messages, [("Missing classes", "Enter at least one class prompt before running SAM3.")])
+        self.assertEqual(parse_prompts(window.prompts_edit.toPlainText()), [])
+
+    def test_annotation_action_buttons_keep_expected_labels_and_tooltips(self):
+        window = MainWindow()
+
+        self.assertEqual(window.apply_box_button.text(), "Apply Box")
+        self.assertEqual(window.delete_button.text(), "Delete")
+        self.assertEqual(window.resegment_button.text(), "Re-segment from Box")
+        self.assertEqual(window.reset_sam3_button.text(), "Reset to SAM3")
+        self.assertEqual(window.apply_box_button.toolTip(), "Save the edited bounding box.")
+        self.assertEqual(
+            window.resegment_button.toolTip(),
+            "Generate a new mask/polygon from the selected bounding box.",
+        )
+        self.assertEqual(window.reset_sam3_button.toolTip(), "Restore the original SAM3 annotation.")
+        self.assertEqual(window.delete_button.toolTip(), "Delete the selected annotation.")
 
     def test_preview_thumbnail_uses_qpixmap_and_handles_invalid_images(self):
         window = MainWindow()

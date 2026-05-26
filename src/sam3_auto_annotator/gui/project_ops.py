@@ -14,8 +14,6 @@ def parse_prompts(text):
 
 def create_project(input_path, prompts, model_path=None, project_name=None):
     image_paths = find_images(input_path)
-    if not prompts:
-        prompts = ["object"]
     if project_name is None:
         project_name = sanitize_name(f"{Path(input_path).stem or Path(input_path).name}_gui")
     return ProjectState.from_image_paths(

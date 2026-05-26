@@ -305,7 +305,6 @@ class MainWindow(QMainWindow):
         self.prompts_edit = QTextEdit()
         self.prompts_edit.setPlaceholderText("One class per line, or comma-separated")
         self.prompts_edit.setFixedHeight(76)
-        self.prompts_edit.setPlainText("object")
         self.prompts_edit.textChanged.connect(self._refresh_classes)
         sam_layout.addRow(self._form_label("Classes"), self.prompts_edit)
 
@@ -413,21 +412,30 @@ class MainWindow(QMainWindow):
         selected_layout.addRow(self._form_label("x2"), self.x2_edit)
         selected_layout.addRow(self._form_label("y2"), self.y2_edit)
 
-        action_row = QHBoxLayout()
+        primary_action_row = QHBoxLayout()
+        secondary_action_row = QHBoxLayout()
         self.apply_box_button = self._button("Apply Box", ICONS["draw"], self._apply_box_details)
+        self.apply_box_button.setToolTip("Save the edited bounding box.")
         self.resegment_button = self._button("Re-segment from Box", ICONS["sam3"], self.resegment_selected_from_box)
-        self.resegment_button.setToolTip("Use the current bbox as a SAM3 prompt to generate a new mask.")
+        self.resegment_button.setToolTip("Generate a new mask/polygon from the selected bounding box.")
         self.reset_sam3_button = self._button("Reset to SAM3", ICONS["reset"], self.reset_selected_to_sam3)
-        self.reset_sam3_button.setToolTip(
-            "Restore the original SAM3 bbox/class/polygon."
-        )
+        self.reset_sam3_button.setToolTip("Restore the original SAM3 annotation.")
         self.delete_button = self._button("Delete", ICONS["trash"], self.delete_selected_annotation, "#dc2626")
+        self.delete_button.setToolTip("Delete the selected annotation.")
         self.delete_button.setObjectName("dangerButton")
-        action_row.addWidget(self.apply_box_button)
-        action_row.addWidget(self.resegment_button)
-        action_row.addWidget(self.reset_sam3_button)
-        action_row.addWidget(self.delete_button)
-        selected_layout.addRow(action_row)
+        for button in (
+            self.apply_box_button,
+            self.delete_button,
+            self.resegment_button,
+            self.reset_sam3_button,
+        ):
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        primary_action_row.addWidget(self.apply_box_button)
+        primary_action_row.addWidget(self.delete_button)
+        secondary_action_row.addWidget(self.resegment_button)
+        secondary_action_row.addWidget(self.reset_sam3_button)
+        selected_layout.addRow(primary_action_row)
+        selected_layout.addRow(secondary_action_row)
 
         self.reviewed_button = self._button("Mark Image Reviewed", ICONS["reviewed"], self.mark_current_reviewed)
         selected_layout.addRow(self.reviewed_button)
@@ -620,13 +628,13 @@ class MainWindow(QMainWindow):
         current_text = self.class_combo.currentText() if hasattr(self, "class_combo") else ""
         self.class_combo.blockSignals(True)
         self.class_combo.clear()
-        self.class_combo.addItems(prompts or ["object"])
+        self.class_combo.addItems(prompts)
         if current_text:
             index = self.class_combo.findText(current_text)
             if index >= 0:
                 self.class_combo.setCurrentIndex(index)
         self.class_combo.blockSignals(False)
-        if self.project_state and prompts:
+        if self.project_state is not None:
             self.project_state.prompts = prompts
         self._update_resegment_button()
 
@@ -724,7 +732,10 @@ class MainWindow(QMainWindow):
         image = self.current_image()
         if image is None:
             return
-        prompts = parse_prompts(self.prompts_edit.toPlainText()) or ["object"]
+        prompts = parse_prompts(self.prompts_edit.toPlainText())
+        if not prompts:
+            self._set_message("Enter at least one class prompt before drawing boxes.")
+            return
         class_id = max(0, self.class_combo.currentIndex())
         class_name = prompts[class_id] if class_id < len(prompts) else prompts[0]
         try:
@@ -878,8 +889,11 @@ class MainWindow(QMainWindow):
         image = self.current_image()
         if annotation is None or image is None:
             return
+        if self.class_combo.currentIndex() < 0 or not self.class_combo.currentText().strip():
+            self._set_message("Enter at least one class prompt before changing classes.")
+            return
         class_id = max(0, self.class_combo.currentIndex())
-        class_name = self.class_combo.currentText() or "object"
+        class_name = self.class_combo.currentText()
         annotation.change_class(class_id, class_name)
         if image.status != ImageStatus.REVIEWED:
             image.status = ImageStatus.EDITED
@@ -970,7 +984,7 @@ class MainWindow(QMainWindow):
             return
         prompts = parse_prompts(self.prompts_edit.toPlainText())
         if not prompts:
-            self._show_error("Missing classes", "Enter at least one class prompt before re-segmenting.")
+            self._show_error("Missing classes", "Enter at least one class prompt before running SAM3.")
             self.tabs.setCurrentIndex(0)
             return
         model_path = self.model_path_edit.text().strip()
@@ -1119,7 +1133,7 @@ class MainWindow(QMainWindow):
             return
         prompts = parse_prompts(self.prompts_edit.toPlainText())
         if not prompts:
-            self._show_error("Missing classes", "Enter at least one class prompt, such as 'car' or 'person'.")
+            self._show_error("Missing classes", "Enter at least one class prompt before running SAM3.")
             self.tabs.setCurrentIndex(0)
             return
         model_path = self.model_path_edit.text().strip()
@@ -1203,7 +1217,7 @@ class MainWindow(QMainWindow):
             return
         prompts = parse_prompts(self.prompts_edit.toPlainText())
         if not prompts:
-            self._show_error("Missing classes", "Enter at least one class prompt before running prediction.")
+            self._show_error("Missing classes", "Enter at least one class prompt before running SAM3.")
             self.tabs.setCurrentIndex(0)
             return
         model_path = self.model_path_edit.text().strip()
@@ -1535,8 +1549,7 @@ class MainWindow(QMainWindow):
         if self.project_state is None:
             return
         prompts = parse_prompts(self.prompts_edit.toPlainText())
-        if prompts:
-            self.project_state.prompts = prompts
+        self.project_state.prompts = prompts
         model_path = self.model_path_edit.text().strip()
         if model_path:
             self.project_state.model_path = model_path
