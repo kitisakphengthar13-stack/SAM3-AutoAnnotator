@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QGraphicsScene,
     QGraphicsView,
 )
+from shiboken6 import isValid
 
 from sam3_auto_annotator.annotation.segmentation import (
     has_valid_segmentation,
@@ -255,6 +256,7 @@ class ImageCanvas(QGraphicsView):
         self._mask_items_by_id = {}
         self._polygon_items_by_id = {}
         self._annotations = []
+        self._selected_annotation_id = None
         self._show_boxes = True
         self._show_masks = True
         self._show_polygons = False
@@ -274,11 +276,17 @@ class ImageCanvas(QGraphicsView):
         if image.isNull():
             raise ValueError(f"Could not load image: {image_path}")
 
-        self._scene.clear()
-        self._items_by_id = {}
-        self._mask_items_by_id = {}
-        self._polygon_items_by_id = {}
+        self._scene.blockSignals(True)
+        try:
+            self._scene.clear()
+            self._pixmap_item = None
+            self._items_by_id.clear()
+            self._mask_items_by_id.clear()
+            self._polygon_items_by_id.clear()
+        finally:
+            self._scene.blockSignals(False)
         self._annotations = []
+        self._selected_annotation_id = None
         pixmap = QPixmap.fromImage(image)
         self._pixmap_item = QGraphicsPixmapItem(pixmap)
         self._pixmap_item.setZValue(0)
@@ -289,29 +297,37 @@ class ImageCanvas(QGraphicsView):
         return image.width(), image.height()
 
     def set_annotations(self, annotations):
+        previous_selected_id = self._selected_annotation_id
         self._annotations = list(annotations)
-        for item in list(self._items_by_id.values()):
-            self._scene.removeItem(item)
-        for item in list(self._mask_items_by_id.values()):
-            self._scene.removeItem(item)
-        for item in list(self._polygon_items_by_id.values()):
-            self._scene.removeItem(item)
-        self._items_by_id = {}
-        self._mask_items_by_id = {}
-        self._polygon_items_by_id = {}
+        self._scene.blockSignals(True)
+        try:
+            self._remove_registry_items(self._items_by_id)
+            self._remove_registry_items(self._mask_items_by_id)
+            self._remove_registry_items(self._polygon_items_by_id)
+            self._items_by_id.clear()
+            self._mask_items_by_id.clear()
+            self._polygon_items_by_id.clear()
 
-        for annotation in self._annotations:
-            if annotation.deleted:
-                continue
-            self._add_segmentation_items(annotation)
-            item = AnnotationRectItem(
-                annotation,
-                image_rect=self._image_rect,
-                changed_callback=self._emit_annotation_changed,
+            for annotation in self._annotations:
+                if annotation.deleted:
+                    continue
+                self._add_segmentation_items(annotation)
+                item = AnnotationRectItem(
+                    annotation,
+                    image_rect=self._image_rect,
+                    changed_callback=self._emit_annotation_changed,
+                )
+                self._items_by_id[annotation.id] = item
+                item.setVisible(self._show_boxes)
+                self._scene.addItem(item)
+
+            self._selected_annotation_id = (
+                previous_selected_id if previous_selected_id in self._items_by_id else None
             )
-            self._items_by_id[annotation.id] = item
-            item.setVisible(self._show_boxes)
-            self._scene.addItem(item)
+            self._apply_selection_to_items(self._selected_annotation_id)
+        finally:
+            self._scene.blockSignals(False)
+        self._refresh_segmentation_styles(self._selected_annotation_id)
 
     def set_overlay_visibility(self, show_boxes=None, show_masks=None, show_polygons=None):
         if show_boxes is not None:
@@ -322,44 +338,55 @@ class ImageCanvas(QGraphicsView):
             self._show_polygons = bool(show_polygons)
 
         for item in self._items_by_id.values():
-            item.setVisible(self._show_boxes)
+            if self._is_live_item(item):
+                item.setVisible(self._show_boxes)
         for item in self._mask_items_by_id.values():
-            item.setVisible(self._show_masks)
+            if self._is_live_item(item):
+                item.setVisible(self._show_masks)
         for item in self._polygon_items_by_id.values():
-            item.setVisible(self._show_polygons)
+            if self._is_live_item(item):
+                item.setVisible(self._show_polygons)
 
-    def selected_annotation_id(self):
+    def selected_annotation_id(self, preserve_stored=True):
+        self._prune_item_registries()
         for item in self._scene.selectedItems():
-            if isinstance(item, AnnotationRectItem):
+            if isinstance(item, AnnotationRectItem) and self._is_live_item(item):
+                self._selected_annotation_id = item.annotation_id
                 return item.annotation_id
+        if preserve_stored and self._selected_annotation_id in self._items_by_id:
+            return self._selected_annotation_id
+        self._selected_annotation_id = None
         return None
 
     def select_annotation(self, annotation_id):
         self._scene.blockSignals(True)
-        for item in self._items_by_id.values():
-            item.setSelected(item.annotation_id == annotation_id)
-            item.apply_style(item.isSelected())
-        self._scene.blockSignals(False)
-        self._refresh_segmentation_styles(annotation_id)
-        self.annotation_selected.emit(annotation_id)
+        try:
+            self._prune_item_registries()
+            self._selected_annotation_id = annotation_id if annotation_id in self._items_by_id else None
+            self._apply_selection_to_items(self._selected_annotation_id)
+        finally:
+            self._scene.blockSignals(False)
+        self._refresh_segmentation_styles(self._selected_annotation_id)
+        self.annotation_selected.emit(self._selected_annotation_id)
 
     def remove_annotation(self, annotation_id):
         item = self._items_by_id.pop(annotation_id, None)
-        if item is not None:
-            self._scene.removeItem(item)
+        self._remove_scene_item(item)
         mask_item = self._mask_items_by_id.pop(annotation_id, None)
-        if mask_item is not None:
-            self._scene.removeItem(mask_item)
+        self._remove_scene_item(mask_item)
         polygon_item = self._polygon_items_by_id.pop(annotation_id, None)
-        if polygon_item is not None:
-            self._scene.removeItem(polygon_item)
+        self._remove_scene_item(polygon_item)
+        if self._selected_annotation_id == annotation_id:
+            self._selected_annotation_id = None
 
     def update_annotation_box(self, annotation):
         item = self._items_by_id.get(annotation.id)
-        if item is not None:
+        if self._is_live_item(item):
             x1, y1, x2, y2 = annotation.box_xyxy
             item.setRect(0, 0, x2 - x1, y2 - y1)
             item.setPos(x1, y1)
+        elif item is not None:
+            self._items_by_id.pop(annotation.id, None)
         self._sync_segmentation_items(annotation)
 
     def fit_to_window(self):
@@ -457,6 +484,41 @@ class ImageCanvas(QGraphicsView):
         self._scene.addItem(polygon_item)
         self._apply_segmentation_style(annotation, mask_item, polygon_item)
 
+    def _is_live_item(self, item):
+        return item is not None and isValid(item)
+
+    def _remove_scene_item(self, item):
+        if self._is_live_item(item):
+            self._scene.removeItem(item)
+
+    def _remove_registry_items(self, registry):
+        for item in list(registry.values()):
+            self._remove_scene_item(item)
+
+    def _prune_registry(self, registry):
+        stale_ids = [
+            annotation_id
+            for annotation_id, item in registry.items()
+            if not self._is_live_item(item)
+        ]
+        for annotation_id in stale_ids:
+            registry.pop(annotation_id, None)
+
+    def _prune_item_registries(self):
+        self._prune_registry(self._items_by_id)
+        self._prune_registry(self._mask_items_by_id)
+        self._prune_registry(self._polygon_items_by_id)
+        if self._selected_annotation_id not in self._items_by_id:
+            self._selected_annotation_id = None
+
+    def _apply_selection_to_items(self, selected_id):
+        for item in list(self._items_by_id.values()):
+            if not self._is_live_item(item):
+                continue
+            selected = item.annotation_id == selected_id
+            item.setSelected(selected)
+            item.apply_style(selected)
+
     def _configure_overlay_item(self, item):
         item.setAcceptedMouseButtons(Qt.NoButton)
         item.setFlag(QGraphicsItem.ItemIsSelectable, False)
@@ -475,11 +537,16 @@ class ImageCanvas(QGraphicsView):
         polygon_item.setPen(pen)
 
     def _refresh_segmentation_styles(self, selected_id=None):
+        self._prune_item_registries()
         annotations_by_id = {annotation.id: annotation for annotation in self._annotations}
-        for annotation_id, polygon_item in self._polygon_items_by_id.items():
+        for annotation_id, polygon_item in list(self._polygon_items_by_id.items()):
             annotation = annotations_by_id.get(annotation_id)
             mask_item = self._mask_items_by_id.get(annotation_id)
-            if annotation is None or mask_item is None:
+            if (
+                annotation is None
+                or not self._is_live_item(mask_item)
+                or not self._is_live_item(polygon_item)
+            ):
                 continue
             self._apply_segmentation_style(
                 annotation,
@@ -490,17 +557,14 @@ class ImageCanvas(QGraphicsView):
 
     def _sync_segmentation_items(self, annotation):
         mask_item = self._mask_items_by_id.pop(annotation.id, None)
-        if mask_item is not None:
-            self._scene.removeItem(mask_item)
+        self._remove_scene_item(mask_item)
         polygon_item = self._polygon_items_by_id.pop(annotation.id, None)
-        if polygon_item is not None:
-            self._scene.removeItem(polygon_item)
+        self._remove_scene_item(polygon_item)
         self._add_segmentation_items(annotation)
 
     def _on_selection_changed(self):
-        selected_id = self.selected_annotation_id()
-        for item in self._items_by_id.values():
-            item.apply_style(item.annotation_id == selected_id)
+        selected_id = self.selected_annotation_id(preserve_stored=False)
+        self._apply_selection_to_items(selected_id)
         self._refresh_segmentation_styles(selected_id)
         self.annotation_selected.emit(selected_id)
 
@@ -511,7 +575,10 @@ class ImageCanvas(QGraphicsView):
         )
 
     def _emit_changed_boxes(self):
-        for annotation_id, item in self._items_by_id.items():
+        self._prune_item_registries()
+        for annotation_id, item in list(self._items_by_id.items()):
+            if not self._is_live_item(item):
+                continue
             rect = item._scene_rect().intersected(self._image_rect)
             if rect.width() <= 0 or rect.height() <= 0:
                 continue

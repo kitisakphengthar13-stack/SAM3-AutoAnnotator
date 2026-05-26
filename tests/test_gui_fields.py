@@ -12,7 +12,7 @@ try:
     from sam3_auto_annotator.annotation.models import Annotation, ImageRecord, ImageStatus, ProjectState
     from sam3_auto_annotator.gui.fields import NumericLineEdit, configure_c_locale
     from sam3_auto_annotator.gui.icons import ICONS, icon
-    from sam3_auto_annotator.gui.image_canvas import AnnotationRectItem
+    from sam3_auto_annotator.gui.image_canvas import AnnotationRectItem, ImageCanvas
     from sam3_auto_annotator.gui.main_window import MainWindow
 except ImportError:  # pragma: no cover - optional GUI dependency
     QApplication = None
@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover - optional GUI dependency
     ICONS = None
     icon = None
     AnnotationRectItem = None
+    ImageCanvas = None
     ImageRecord = None
     ImageStatus = None
     ProjectState = None
@@ -63,6 +64,62 @@ class GuiFieldTests(unittest.TestCase):
             self.assertTrue(window._set_preview_thumbnail(image_path))
             self.assertFalse(window.preview_thumb.pixmap().isNull())
             self.assertFalse(window._set_preview_thumbnail(Path(temp_dir) / "missing.png"))
+
+    def test_canvas_selection_changed_prunes_deleted_qgraphics_items(self):
+        canvas = ImageCanvas()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "image.png"
+            image = QImage(100, 80, QImage.Format_RGB32)
+            image.fill(QColor("#ffffff"))
+            self.assertTrue(image.save(str(image_path)))
+
+            canvas.load_image(image_path)
+            annotation = Annotation(0, "object", (10, 10, 40, 40), id="ann-1")
+            canvas.set_annotations([annotation])
+            self.assertIn("ann-1", canvas._items_by_id)
+
+            canvas._scene.clear()
+            canvas._on_selection_changed()
+
+            self.assertEqual(canvas._items_by_id, {})
+            self.assertIsNone(canvas.selected_annotation_id())
+
+    def test_canvas_preserves_selection_by_annotation_id_after_redraw(self):
+        canvas = ImageCanvas()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "image.png"
+            image = QImage(100, 80, QImage.Format_RGB32)
+            image.fill(QColor("#ffffff"))
+            self.assertTrue(image.save(str(image_path)))
+
+            canvas.load_image(image_path)
+            annotation = Annotation(0, "object", (10, 10, 40, 40), id="ann-1")
+            canvas.set_annotations([annotation])
+            canvas.select_annotation(annotation.id)
+
+            canvas.set_annotations([annotation])
+
+            self.assertEqual(canvas.selected_annotation_id(), annotation.id)
+
+    def test_main_window_selected_annotation_survives_canvas_refresh(self):
+        window = MainWindow()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "image.png"
+            image_file = QImage(100, 80, QImage.Format_RGB32)
+            image_file.fill(QColor("#ffffff"))
+            self.assertTrue(image_file.save(str(image_path)))
+
+            annotation = Annotation(0, "object", (10, 10, 40, 40), id="ann-1")
+            image = ImageRecord(str(image_path), 0, width=100, height=80, annotations=[annotation])
+            window.project_state = ProjectState(str(temp_dir), ["object"], [image])
+            window.current_image_index = 0
+            window.canvas.load_image(image_path)
+            window.canvas.set_annotations(image.active_annotations)
+            window.canvas.select_annotation(annotation.id)
+
+            window.canvas.set_annotations(image.active_annotations)
+
+            self.assertEqual(window.selected_annotation(), annotation)
 
     def test_resegment_syncs_pending_detail_box_before_worker_start(self):
         window = MainWindow()
