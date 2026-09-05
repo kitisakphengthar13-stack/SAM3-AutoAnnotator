@@ -137,7 +137,9 @@ class InferenceController:
         self.host.view.set_message(message)
 
     def task_started(self, _kind):
-        self.host.presentation.update_actions()
+        host = self.host
+        host.view.history.clear_for_inference_boundary()
+        host.presentation.update_actions()
 
     def batch_progress(self, current, total, image_path):
         host = self.host
