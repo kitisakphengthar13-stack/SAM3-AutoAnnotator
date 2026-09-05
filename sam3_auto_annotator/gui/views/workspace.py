@@ -2,6 +2,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QGraphicsView,
     QHBoxLayout,
     QLabel,
     QStackedWidget,
@@ -15,6 +16,48 @@ from sam3_auto_annotator.gui.widgets.empty_state import EmptyStateWidget
 from sam3_auto_annotator.gui.widgets.image_canvas import ImageCanvas
 from sam3_auto_annotator.gui.widgets.image_load_error import ImageLoadErrorWidget
 from sam3_auto_annotator.gui.widgets.task_progress import TaskProgressWidget
+
+
+class WorkCanvas(ImageCanvas):
+    """Image canvas with workstation navigation that does not alter annotation data."""
+
+    def zoom_in(self):
+        self._zoom_by(1.2)
+
+    def zoom_out(self):
+        self._zoom_by(1 / 1.2)
+
+    def actual_size(self):
+        if self._pixmap_item is None:
+            return
+        self._auto_fit = False
+        self.resetTransform()
+
+    def _zoom_by(self, factor):
+        if self._pixmap_item is None:
+            return
+        current = self.transform().m11()
+        target = current * factor
+        if not 0.05 <= target <= 20.0:
+            return
+        self._auto_fit = False
+        self.scale(factor, factor)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Space and not event.isAutoRepeat() and not self._draw_mode:
+            self.setDragMode(QGraphicsView.ScrollHandDrag)
+            self.viewport().setCursor(Qt.OpenHandCursor)
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event):
+        if event.key() == Qt.Key_Space and not event.isAutoRepeat():
+            self.setDragMode(QGraphicsView.NoDrag)
+            self.viewport().setCursor(Qt.CrossCursor if self._draw_mode else Qt.ArrowCursor)
+            event.accept()
+            return
+        super().keyReleaseEvent(event)
 
 
 class CanvasWorkspace(QWidget):
@@ -77,7 +120,7 @@ class CanvasWorkspace(QWidget):
         self.workspace_stack.setObjectName("canvasStack")
         self.empty_state = EmptyStateWidget()
         self.image_load_error = ImageLoadErrorWidget()
-        self.canvas = ImageCanvas()
+        self.canvas = WorkCanvas()
         self.workspace_stack.addWidget(self.empty_state)
         self.workspace_stack.addWidget(self.image_load_error)
         self.workspace_stack.addWidget(self.canvas)
