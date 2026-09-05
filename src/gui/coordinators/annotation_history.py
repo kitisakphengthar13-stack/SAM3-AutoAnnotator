@@ -7,13 +7,14 @@ from gui.undo import ImageSnapshotCommand
 
 
 class AnnotationHistoryCoordinator:
-    """Own undo/redo capture around user-driven annotation mutations."""
+    """Own undo/redo capture and saved-state tracking for annotation edits."""
 
     def __init__(self, window):
         self.window = window
         self.stack = QUndoStack(window)
         self._project = None
         self._pending_capture = None
+        self._external_dirty = False
         self._connect()
 
     def _connect(self):
@@ -22,6 +23,7 @@ class AnnotationHistoryCoordinator:
         actions.redo.triggered.connect(self.stack.redo)
         self.stack.canUndoChanged.connect(actions.undo.setEnabled)
         self.stack.canRedoChanged.connect(actions.redo.setEnabled)
+        self.stack.cleanChanged.connect(self._clean_changed)
 
         for action, text in (
             (actions.apply_class, "Change class"),
@@ -57,7 +59,18 @@ class AnnotationHistoryCoordinator:
             return
         self._project = project
         self._pending_capture = None
+        self._external_dirty = False
         self.stack.clear()
+        self.stack.setClean()
+
+    def mark_clean(self):
+        self._external_dirty = False
+        self.stack.setClean()
+        self._sync_dirty_state()
+
+    def mark_external_dirty(self):
+        self._external_dirty = True
+        self._sync_dirty_state()
 
     def begin_edit(self, text):
         controller = self.window.controller
@@ -101,16 +114,30 @@ class AnnotationHistoryCoordinator:
         controller = self.window.controller
         if controller is None or controller.project is not self._project:
             return
-        controller.presentation.mark_dirty(refresh=False)
         self.window.dataset.refresh(image_index)
         if controller.current_image_index == image_index:
             controller.annotations.render_current_annotations(selected_annotation_id)
         else:
             controller.presentation.update_actions()
             controller.presentation.update_context()
+        # QUndoStack updates its index after the command callback returns.
+        QTimer.singleShot(0, self._sync_dirty_state)
+
+    def _clean_changed(self, _clean):
+        QTimer.singleShot(0, self._sync_dirty_state)
+
+    def _sync_dirty_state(self):
+        controller = self.window.controller
+        if controller is None or controller.project is not self._project:
+            return
+        controller.dirty = self._external_dirty or not self.stack.isClean()
+        controller.presentation.update_actions()
+        controller.presentation.update_context()
 
     def clear_if_inference_started(self):
         controller = self.window.controller
         mode = getattr(getattr(controller, "mode", None), "value", "")
         if mode in {"predicting", "batch", "resegmenting"}:
             self.stack.clear()
+            self._external_dirty = True
+            self._sync_dirty_state()
