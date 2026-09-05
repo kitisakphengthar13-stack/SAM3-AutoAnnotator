@@ -6,39 +6,43 @@ from sam3_auto_annotator.gui.widgets.elided_label import ElidedLabel
 
 
 class CommandBar(QToolBar):
+    """Compact global workflow bar; dense tool controls belong beside the canvas."""
+
     def __init__(self, actions, parent=None):
         super().__init__("Main Commands", parent)
         self.setObjectName("commandBar")
         self.setMovable(False)
         self.setFloatable(False)
-        self.setIconSize(QSize(16, 16))
+        self.setIconSize(QSize(18, 18))
         self.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
 
         self.project_label = ElidedLabel("No project loaded")
         self.project_label.setObjectName("projectSubtitle")
-        self.project_label.setMinimumWidth(120)
-        self.project_label.setMaximumWidth(220)
+        self.project_label.setMinimumWidth(100)
+        self.project_label.setMaximumWidth(160)
         self.project_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         self.addWidget(self.project_label)
         self.addSeparator()
 
-        for action in (
-            actions.open_image,
-            actions.open_folder,
-            actions.save,
-        ):
-            self.addAction(action)
+        self.addAction(actions.open_image)
+        self.addAction(actions.save)
         self.addSeparator()
-        self.addAction(actions.previous_image)
-        self.addAction(actions.next_image)
+        self._add_compact(actions.previous_image)
+        self._add_compact(actions.next_image)
         self.addAction(actions.mark_reviewed)
         self.addSeparator()
-        self.addAction(actions.undo)
-        self.addAction(actions.redo)
+        self._add_compact(actions.undo)
+        self._add_compact(actions.redo)
         self.addSeparator()
         self.addAction(actions.run_current)
         self.addAction(actions.project_settings)
         self.addAction(actions.export_dialog)
+
+    def _add_compact(self, action):
+        self.addAction(action)
+        button = self.widgetForAction(action)
+        if button is not None:
+            button.setToolButtonStyle(Qt.ToolButtonIconOnly)
 
     def tool_button(self, action):
         return self.widgetForAction(action)
