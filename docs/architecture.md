@@ -70,10 +70,9 @@ Responsibilities are explicit:
   context, action enablement policy, and GUI error reporting.
 
 Active QAction, view-signal, and task-signal routing targets the focused owner
-directly. It does not bounce through Workstation forwarding methods. Private
-compatibility forwarding methods have been removed; a small public compatibility
-surface remains only for legacy GUI-field tests and is not in the runtime signal
-path.
+directly. `WorkstationController` exposes shared state/composition concerns only;
+use-case forwarding methods, both public and private, are absent and guarded by
+automated architecture tests.
 
 `WorkstationController` does not inherit a monolithic controller. The retired
 `gui/controller.py`, `AppController`, Inspector API, and `ControllerSurfaceAdapter`
