@@ -6,9 +6,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
+from gui.controllers.annotation_controller import AnnotationController
 from gui.coordinators import (
     AnnotationHistoryCoordinator,
-    AnnotationInteractionCoordinator,
     ExportDialogCoordinator,
     SetupDialogCoordinator,
 )
@@ -28,11 +28,8 @@ class GuiCoordinatorBoundaryTests(unittest.TestCase):
         self.window.close()
         self.window.deleteLater()
 
-    def test_main_window_composes_workflow_coordinators(self):
-        self.assertIsInstance(
-            self.window.annotation_interaction,
-            AnnotationInteractionCoordinator,
-        )
+    def test_main_window_composes_only_cross_surface_workflow_coordinators(self):
+        self.assertFalse(hasattr(self.window, "annotation_interaction"))
         self.assertIsInstance(self.window.history, AnnotationHistoryCoordinator)
         self.assertIsInstance(self.window.setup_flow, SetupDialogCoordinator)
         self.assertIsInstance(self.window.export_flow, ExportDialogCoordinator)
@@ -46,15 +43,19 @@ class GuiCoordinatorBoundaryTests(unittest.TestCase):
             "_setup_snapshot",
             "_setup_snapshot_pending",
             "inspector",
+            "annotation_interaction",
         ):
             with self.subTest(name=retired_name):
                 self.assertFalse(hasattr(self.window, retired_name))
 
     def test_active_class_compatibility_bridge_no_longer_exists(self):
         self.assertFalse(hasattr(self.window.history, "_draw_class_restore"))
-        self.assertFalse(
-            hasattr(self.window.annotation_interaction, "_draw_class_restore")
-        )
+
+    def test_review_and_next_is_annotation_use_case_not_timer_glue(self):
+        source = inspect.getsource(AnnotationController)
+        self.assertIn("review_current_and_select_next", source)
+        self.assertNotIn("QTimer", source)
+        self.assertNotIn("_advance_after_review", inspect.getsource(MainWindow))
 
     def test_main_window_source_does_not_reimplement_workflow_algorithms(self):
         source = inspect.getsource(MainWindow)
