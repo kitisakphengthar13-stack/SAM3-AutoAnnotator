@@ -17,7 +17,7 @@ class CommandBar(QToolBar):
         self.project_label = ElidedLabel("No project loaded")
         self.project_label.setObjectName("projectSubtitle")
         self.project_label.setMinimumWidth(120)
-        self.project_label.setMaximumWidth(180)
+        self.project_label.setMaximumWidth(220)
         self.project_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         self.addWidget(self.project_label)
         self.addSeparator()
@@ -30,6 +30,8 @@ class CommandBar(QToolBar):
         ):
             self.addAction(action)
         self.addSeparator()
+        self.addAction(actions.project_settings)
+        self.addAction(actions.export)
 
     def tool_button(self, action):
         return self.widgetForAction(action)
@@ -42,6 +44,7 @@ def build_menus(window, actions):
         actions.open_image,
         actions.open_folder,
         actions.open_state,
+        actions.project_settings,
         actions.import_yolo,
         actions.save,
         actions.export,
@@ -68,8 +71,18 @@ def build_menus(window, actions):
         annotation_menu.addAction(action)
 
     navigate_menu = menu_bar.addMenu("&Navigate")
-    navigate_menu.addAction(actions.previous_image)
-    navigate_menu.addAction(actions.next_image)
-    navigate_menu.addAction(actions.fit)
+    for action in (
+        actions.previous_image,
+        actions.next_image,
+        actions.zoom_out,
+        actions.actual_size,
+        actions.zoom_in,
+        actions.fit,
+    ):
+        navigate_menu.addAction(action)
+
+    view_menu = menu_bar.addMenu("&View")
+    view_menu.addAction(actions.focus_workspace)
+    view_menu.addAction(actions.fullscreen)
 
     return exit_action
