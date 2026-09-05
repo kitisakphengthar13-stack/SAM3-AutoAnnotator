@@ -66,6 +66,8 @@ class MainWindow(QMainWindow):
         self._undo_project = None
         self._pending_undo_capture = None
         self._draw_class_restore = None
+        self._setup_snapshot = None
+        self._setup_snapshot_pending = False
 
         self.actions = AppActions(self)
         self.undo_stack = QUndoStack(self)
@@ -88,8 +90,8 @@ class MainWindow(QMainWindow):
         )
         self.annotation.setMinimumWidth(280)
 
-        # Reuse the same class list, but deliberately keep the drawing class and
-        # selected-object class as independent selections.
+        # Reuse the class list but keep drawing-class selection independent from
+        # selected-object class editing.
         self.canvas_area.active_class_combo.setModel(self.annotation.class_combo.model())
 
         self.view_menu.addSeparator()
@@ -102,8 +104,10 @@ class MainWindow(QMainWindow):
 
         self.setup = SetupPanel(self.actions)
         self.setup_dialog = self._dialog("Project Setup", self.setup, 430, 650)
+        self.setup_dialog.setWindowModality(Qt.WindowModal)
         self.results = ResultsPanel(self.actions)
         self.results_dialog = self._dialog("Export", self.results, 500, 680)
+        self.results_dialog.setWindowModality(Qt.WindowModal)
         self.inspector = _SurfaceRouter(self)
 
         self.actions.project_settings.triggered.connect(self.show_setup)
@@ -117,6 +121,9 @@ class MainWindow(QMainWindow):
         self.actions.mark_reviewed.triggered.connect(
             lambda: QTimer.singleShot(0, self._advance_after_review)
         )
+        self.setup.apply_requested.connect(self._apply_setup)
+        self.setup.cancel_requested.connect(self.setup_dialog.reject)
+        self.setup_dialog.rejected.connect(self._restore_setup_snapshot)
         self._set_canvas_navigation_enabled(False)
         self._setup_undo_tracking()
 
@@ -146,7 +153,6 @@ class MainWindow(QMainWindow):
     def _dialog(self, title, widget, width, height):
         dialog = QDialog(self)
         dialog.setWindowTitle(title)
-        dialog.setModal(False)
         dialog.resize(width, height)
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -180,8 +186,8 @@ class MainWindow(QMainWindow):
                 lambda _checked=False, label=text: self._begin_undoable_edit(label)
             )
 
-        # These slots are connected before AppController, so the hidden legacy
-        # class reader sees the visible active class only for the draw operation.
+        # These slots are connected before AppController, so the legacy class
+        # reader receives the visible active drawing class for this operation.
         self.canvas.box_drawn.connect(self._prepare_active_class_for_draw)
         self.canvas.box_drawn.connect(
             lambda _box: self._begin_undoable_edit("Add annotation")
@@ -286,9 +292,34 @@ class MainWindow(QMainWindow):
             self.undo_stack.clear()
 
     def show_setup(self):
+        if not self.setup_dialog.isVisible():
+            # Project loading opens this surface before set_project() fills it.
+            # Capturing on the next event turn records the populated values.
+            self._setup_snapshot_pending = True
+            QTimer.singleShot(0, self._capture_setup_snapshot)
         self.setup_dialog.show()
         self.setup_dialog.raise_()
         self.setup_dialog.activateWindow()
+
+    def _capture_setup_snapshot(self):
+        if not self._setup_snapshot_pending or not self.setup_dialog.isVisible():
+            return
+        self._setup_snapshot_pending = False
+        self._setup_snapshot = self.setup.snapshot()
+
+    def _apply_setup(self):
+        self.setup.settings_changed.emit()
+        if self.setup.prompt_validation_label.isVisible():
+            return
+        self._setup_snapshot = None
+        self._setup_snapshot_pending = False
+        self.setup_dialog.accept()
+
+    def _restore_setup_snapshot(self):
+        if self._setup_snapshot is not None:
+            self.setup.restore_snapshot(self._setup_snapshot)
+        self._setup_snapshot = None
+        self._setup_snapshot_pending = False
 
     def show_review(self):
         self.annotation_dock.show()
@@ -441,8 +472,6 @@ class MainWindow(QMainWindow):
         title = str(title)
         if title == "Delete Annotation":
             return True
-        # The export dialog already makes incomplete-project risk explicit and
-        # changes its primary action to Export Anyway.
         if title == "Incomplete Images" and self.results_dialog.isVisible():
             return True
         dialog = QMessageBox(self)
