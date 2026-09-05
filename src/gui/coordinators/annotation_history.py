@@ -51,6 +51,8 @@ class AnnotationHistoryCoordinator:
         self._sync_dirty_state()
 
     def mark_external_dirty(self):
+        """Mark a non-undoable mutation and invalidate incompatible edit commands."""
+        self.stack.clear()
         self._external_dirty = True
         self._sync_dirty_state()
 
@@ -92,8 +94,8 @@ class AnnotationHistoryCoordinator:
         return True
 
     def clear_for_inference_boundary(self):
-        """Drop incompatible edit commands while preserving unsaved dirty state."""
-        history_was_dirty = not self.stack.isClean()
+        """Drop incompatible edit commands when a model task starts."""
+        history_was_dirty = self._external_dirty or not self.stack.isClean()
         self.stack.clear()
         if history_was_dirty:
             self._external_dirty = True
