@@ -19,6 +19,11 @@ The redesign now includes:
 - class/confidence labels, bounded zoom, 100%, Fit, Space-pan, Focus Workspace,
   and F11 fullscreen;
 - Undo/Redo for completed object edits and immediate single-object Delete;
+- explicit annotation-history transactions owned by `AnnotationController`, with no
+  QAction/signal-order or timer-based edit capture;
+- typed annotation-state snapshots that cannot restore image path/name/index/size;
+- hard history barriers for Review, applied settings, YOLO import, inference, and
+  other non-undoable mutations;
 - transactional Setup and service-backed Export preflight;
 - focused Project/Annotation/Inference/Export/Presentation controllers;
 - no Inspector compatibility surface, `AppController`, controller forwarding API,
@@ -26,8 +31,8 @@ The redesign now includes:
 
 ## Automated branch evidence
 
-GitHub Actions run `33964762882` executed against code head
-`a1240366c758b24f9e9d7803061ad59a870d6cfc` on 2026-09-05 and completed
+GitHub Actions run `33965679785` executed against code head
+`8d282e7a73f18d1837d81d13c9f48c697d421062` on 2026-09-05 and completed
 successfully.
 
 Recorded checks:
@@ -40,13 +45,17 @@ Recorded checks:
 - production `requirements.txt` dependency resolution with `pip --dry-run` passed;
 - `PYTHONPATH=src`;
 - `python -m compileall -q src tests` passed;
-- `python -m unittest discover -s tests -v` ran **147 tests**;
-- result: **147 passed, 0 failures, 0 errors, 0 skipped**.
+- `python -m unittest discover -s tests -v` ran **155 tests**;
+- result: **155 passed, 0 failures, 0 errors, 0 skipped**.
 
 The suite includes guards for repository layout, removed namespace/controller shims,
 absence of Workstation use-case forwarding methods, focused controller routing,
 Review & Next behavior in All/Needs Review filters, staged Setup, single export
-warning acknowledgement, app-home paths, and undo clean/external-dirty behavior.
+warning acknowledgement, app-home paths, and annotation-history behavior. History
+coverage now verifies explicit capture/commit boundaries, no QTimer/signal-order
+capture, selection restoration, clean-index behavior, external mutation barriers,
+sync-time settings mutation tracking, inference task-start boundaries, and protection
+of unrelated image metadata from Undo.
 
 ## Required local Windows baseline
 
@@ -83,23 +92,26 @@ Check at minimum:
 8. Change the active next-box class while another object is selected; the selected
    object must not be reclassified.
 9. Verify class/confidence labels do not block object selection.
-10. Add, move, resize, reclassify, reset, and delete objects; Undo/Redo each.
+10. Add, move, resize, reclassify, reset, and delete objects; Undo/Redo each and
+    verify the expected object selection is restored.
 11. Save after an edit, edit again, Undo to the saved point, and verify the window
-    returns to clean state; then verify an external change remains dirty across Undo.
-12. Start inference after local edits and verify stale undo history cannot cross the
-    inference mutation boundary.
-13. Verify Review & Next advances exactly once in All and Needs Review filters.
-14. Verify Setup Cancel/X discards drafts and valid Apply commits once.
-15. Remove an in-use class while changing another setting; the whole Apply must be
+    returns to clean state.
+12. After an undoable edit, use Review & Next or Apply Setup and verify older Undo
+    history is cleared while the project remains dirty.
+13. Start SAM3 with invalid settings and verify valid Undo history is retained; then
+    start a real task and verify history clears when the task actually starts.
+14. Verify Review & Next advances exactly once in All and Needs Review filters.
+15. Verify Setup Cancel/X discards drafts and valid Apply commits once.
+16. Remove an in-use class while changing another setting; the whole Apply must be
     rejected without partial mutation.
-16. Press Ctrl+E and verify preflight alone writes nothing; export only after the
+17. Press Ctrl+E and verify preflight alone writes nothing; export only after the
     explicit Export Now/Export Anyway action.
-17. Check normal annotation flow at 960x620 and 1360x840.
-18. Repeat maximized/fullscreen at Windows DPI 125% and 150%; inspect native hit
+18. Check normal annotation flow at 960x620 and 1360x840.
+19. Repeat maximized/fullscreen at Windows DPI 125% and 150%; inspect native hit
     targets, dock/title-bar behavior, text clipping, and shortcuts.
-19. Run pending inference and confirm progress/cancel remain usable in normal and
+20. Run pending inference and confirm progress/cancel remain usable in normal and
     Focus Workspace modes.
-20. Verify the default project/model/log locations resolve under the Windows user-data
+21. Verify the default project/model/log locations resolve under the Windows user-data
     directory rather than creating `models/` or `outputs/` in the checkout.
 
 ## Real SAM3 GPU check
