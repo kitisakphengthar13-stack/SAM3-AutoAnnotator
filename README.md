@@ -8,8 +8,6 @@ boxes, save resumable project state, and export reviewed data.
 This repository is intentionally **GUI-only**. It is not a pip-distributed package
 and does not provide a command-line annotation workflow.
 
-![SAM3 AutoAnnotator workspace](assets/gui_main.png)
-
 ## What it does
 
 - Opens one image or every supported image directly inside one folder.
