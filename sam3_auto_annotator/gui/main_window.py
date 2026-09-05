@@ -88,8 +88,8 @@ class MainWindow(QMainWindow):
         self.results_dialog = self._dialog("Export", self.results, 500, 680)
         self.results_dialog.setWindowModality(Qt.WindowModal)
 
-        # Interaction connects first so visible active-class state is prepared
-        # before history capture and the legacy controller receive a draw signal.
+        # Cross-view review follow-up and edit-history policy stay outside
+        # the window shell.
         self.annotation_interaction = AnnotationInteractionCoordinator(self)
         self.history = AnnotationHistoryCoordinator(self)
         self.undo_stack = self.history.stack
