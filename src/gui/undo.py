@@ -19,13 +19,24 @@ class ImageSnapshotCommand(QUndoCommand):
         *,
         text,
         selected_annotation_id=None,
+        before_selected_annotation_id=None,
+        after_selected_annotation_id=None,
     ):
         super().__init__(text)
         self._image = image
         self._before = deepcopy(before)
         self._after = deepcopy(after)
         self._on_applied = on_applied
-        self._selected_annotation_id = selected_annotation_id
+        self._before_selected_annotation_id = (
+            selected_annotation_id
+            if before_selected_annotation_id is None
+            else before_selected_annotation_id
+        )
+        self._after_selected_annotation_id = (
+            selected_annotation_id
+            if after_selected_annotation_id is None
+            else after_selected_annotation_id
+        )
         self._first_redo = True
 
     def redo(self):
@@ -34,12 +45,12 @@ class ImageSnapshotCommand(QUndoCommand):
         if self._first_redo:
             self._first_redo = False
             return
-        self._restore(self._after)
+        self._restore(self._after, self._after_selected_annotation_id)
 
     def undo(self):
-        self._restore(self._before)
+        self._restore(self._before, self._before_selected_annotation_id)
 
-    def _restore(self, snapshot):
+    def _restore(self, snapshot, selected_annotation_id):
         restored = ImageRecord.from_dict(deepcopy(snapshot))
         self._image.image_path = restored.image_path
         self._image.image_name = restored.image_name
@@ -51,5 +62,5 @@ class ImageSnapshotCommand(QUndoCommand):
         self._image.error_message = restored.error_message
         self._on_applied(
             self._image.image_index,
-            self._selected_annotation_id,
+            selected_annotation_id,
         )
