@@ -13,7 +13,7 @@ The redesign now includes:
 - one executable composition root at `src/main.py` and no root forwarding script;
 - `domain`, `services`, `sam3`, `storage`, and `gui` directly under `src/`;
 - integration images under `tests/fixtures/images/`;
-- generated `outputs/` excluded from Git;
+- runtime models, projects, and logs under the OS user-data home rather than the repository;
 - canvas-first `QMainWindow` with Dataset/Objects docks;
 - explicit Select/Pan/Box tools and independent active drawing class;
 - class/confidence labels, bounded zoom, 100%, Fit, Space-pan, Focus Workspace,
@@ -21,12 +21,13 @@ The redesign now includes:
 - Undo/Redo for completed object edits and immediate single-object Delete;
 - transactional Setup and service-backed Export preflight;
 - focused Project/Annotation/Inference/Export/Presentation controllers;
-- no Inspector compatibility surface, `AppController`, or `gui/controller.py` shim.
+- no Inspector compatibility surface, `AppController`, controller forwarding API,
+  or `gui/controller.py` shim.
 
 ## Automated branch evidence
 
-GitHub Actions run `33963467478` executed against code head
-`6f286289e4cc2513056dadd3f0d5e20e3004ada6` on 2026-09-05 and completed
+GitHub Actions run `33964762882` executed against code head
+`a1240366c758b24f9e9d7803061ad59a870d6cfc` on 2026-09-05 and completed
 successfully.
 
 Recorded checks:
@@ -39,12 +40,13 @@ Recorded checks:
 - production `requirements.txt` dependency resolution with `pip --dry-run` passed;
 - `PYTHONPATH=src`;
 - `python -m compileall -q src tests` passed;
-- `python -m unittest discover -s tests -v` ran **136 tests**;
-- result: **136 passed, 0 failures, 0 errors, 0 skipped**.
+- `python -m unittest discover -s tests -v` ran **147 tests**;
+- result: **147 passed, 0 failures, 0 errors, 0 skipped**.
 
-The suite includes repository-layout guards that reject the removed wrapper package,
-root forwarding entrypoint, retired controller shim, old fixture directory, removed
-namespace imports, and one-shot migration workflows.
+The suite includes guards for repository layout, removed namespace/controller shims,
+absence of Workstation use-case forwarding methods, focused controller routing,
+Review & Next behavior in All/Needs Review filters, staged Setup, single export
+warning acknowledgement, app-home paths, and undo clean/external-dirty behavior.
 
 ## Required local Windows baseline
 
@@ -82,19 +84,23 @@ Check at minimum:
    object must not be reclassified.
 9. Verify class/confidence labels do not block object selection.
 10. Add, move, resize, reclassify, reset, and delete objects; Undo/Redo each.
-11. Start inference after local edits and verify stale undo history cannot cross the
+11. Save after an edit, edit again, Undo to the saved point, and verify the window
+    returns to clean state; then verify an external change remains dirty across Undo.
+12. Start inference after local edits and verify stale undo history cannot cross the
     inference mutation boundary.
-12. Verify Review & Next advances exactly once when another visible image exists.
-13. Verify Setup Cancel/X discards drafts and valid Apply commits once.
-14. Remove an in-use class while changing another setting; the whole Apply must be
+13. Verify Review & Next advances exactly once in All and Needs Review filters.
+14. Verify Setup Cancel/X discards drafts and valid Apply commits once.
+15. Remove an in-use class while changing another setting; the whole Apply must be
     rejected without partial mutation.
-15. Press Ctrl+E and verify preflight alone writes nothing; export only after the
+16. Press Ctrl+E and verify preflight alone writes nothing; export only after the
     explicit Export Now/Export Anyway action.
-16. Check normal annotation flow at 960x620 and 1360x840.
-17. Repeat maximized/fullscreen at Windows DPI 125% and 150%; inspect native hit
+17. Check normal annotation flow at 960x620 and 1360x840.
+18. Repeat maximized/fullscreen at Windows DPI 125% and 150%; inspect native hit
     targets, dock/title-bar behavior, text clipping, and shortcuts.
-18. Run pending inference and confirm progress/cancel remain usable in normal and
+19. Run pending inference and confirm progress/cancel remain usable in normal and
     Focus Workspace modes.
+20. Verify the default project/model/log locations resolve under the Windows user-data
+    directory rather than creating `models/` or `outputs/` in the checkout.
 
 ## Real SAM3 GPU check
 
