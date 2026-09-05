@@ -25,14 +25,18 @@ class CommandBar(QToolBar):
         for action in (
             actions.open_image,
             actions.open_folder,
-            actions.open_state,
             actions.save,
         ):
             self.addAction(action)
         self.addSeparator()
+        self.addAction(actions.previous_image)
+        self.addAction(actions.next_image)
+        self.addAction(actions.mark_reviewed)
+        self.addSeparator()
         self.addAction(actions.undo)
         self.addAction(actions.redo)
         self.addSeparator()
+        self.addAction(actions.run_current)
         self.addAction(actions.project_settings)
         self.addAction(actions.export)
 
@@ -92,6 +96,7 @@ def build_menus(window, actions):
         navigate_menu.addAction(action)
 
     view_menu = menu_bar.addMenu("&View")
+    window.view_menu = view_menu
     view_menu.addAction(actions.focus_workspace)
     view_menu.addAction(actions.fullscreen)
 
