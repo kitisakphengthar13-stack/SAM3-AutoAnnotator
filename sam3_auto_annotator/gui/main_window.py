@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, Qt, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QUndoStack
 from PySide6.QtWidgets import (
     QDialog,
     QDockWidget,
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from sam3_auto_annotator.gui.actions import AppActions
 from sam3_auto_annotator.gui.theme import APP_STYLESHEET
+from sam3_auto_annotator.gui.undo import ImageSnapshotCommand
 from sam3_auto_annotator.gui.views.annotation_panel import AnnotationPanel
 from sam3_auto_annotator.gui.views.dataset_panel import DatasetPanel
 from sam3_auto_annotator.gui.views.main_toolbar import CommandBar, build_menus
@@ -62,8 +63,11 @@ class MainWindow(QMainWindow):
         self.diagnostic_log_path = None
         self._focus_previous_visibility = (True, True)
         self._fullscreen_restore_maximized = False
+        self._undo_project = None
+        self._pending_undo_capture = None
 
         self.actions = AppActions(self)
+        self.undo_stack = QUndoStack(self)
         self.exit_action = build_menus(self, self.actions)
         self.command_bar = CommandBar(self.actions, self)
         self.addToolBar(self.command_bar)
@@ -105,6 +109,7 @@ class MainWindow(QMainWindow):
             lambda: QTimer.singleShot(0, self._advance_after_review)
         )
         self._set_canvas_navigation_enabled(False)
+        self._setup_undo_tracking()
 
         self.setStatusBar(QStatusBar(self))
         self.status_context = ElidedLabel("No image | 0 annotations | saved")
@@ -149,6 +154,102 @@ class MainWindow(QMainWindow):
 
     def set_controller(self, controller):
         self.controller = controller
+
+    def _setup_undo_tracking(self):
+        self.actions.undo.triggered.connect(self.undo_stack.undo)
+        self.actions.redo.triggered.connect(self.undo_stack.redo)
+        self.undo_stack.canUndoChanged.connect(self.actions.undo.setEnabled)
+        self.undo_stack.canRedoChanged.connect(self.actions.redo.setEnabled)
+
+        for action, text in (
+            (self.actions.apply_class, "Change class"),
+            (self.actions.apply_box, "Edit box"),
+            (self.actions.reset_sam3, "Reset annotation"),
+            (self.actions.delete_annotation, "Delete annotation"),
+        ):
+            action.triggered.connect(
+                lambda _checked=False, label=text: self._begin_undoable_edit(label)
+            )
+
+        self.canvas.box_drawn.connect(
+            lambda _box: self._begin_undoable_edit("Add annotation")
+        )
+        self.canvas.annotation_changed.connect(
+            lambda _annotation_id, _box: self._begin_undoable_edit("Edit box")
+        )
+        for action in (
+            self.actions.run_current,
+            self.actions.run_remaining,
+            self.actions.resegment,
+        ):
+            action.triggered.connect(
+                lambda _checked=False: QTimer.singleShot(
+                    0, self._clear_undo_if_inference_started
+                )
+            )
+
+    def _begin_undoable_edit(self, text):
+        controller = self.controller
+        image = controller.current_image if controller is not None else None
+        if image is None or self._pending_undo_capture is not None:
+            return
+        self._sync_undo_project()
+        self._pending_undo_capture = (
+            image,
+            image.to_dict(),
+            str(text),
+            controller.selected_annotation_id,
+        )
+        QTimer.singleShot(0, self._finish_undoable_edit)
+
+    def _finish_undoable_edit(self):
+        capture = self._pending_undo_capture
+        self._pending_undo_capture = None
+        if capture is None or self.controller is None:
+            return
+        image, before, text, selected_id = capture
+        if self.controller.project is not self._undo_project:
+            self._sync_undo_project()
+            return
+        after = image.to_dict()
+        if before == after:
+            return
+        self.undo_stack.push(
+            ImageSnapshotCommand(
+                image,
+                before,
+                after,
+                self._apply_undo_snapshot,
+                text=text,
+                selected_annotation_id=selected_id,
+            )
+        )
+
+    def _apply_undo_snapshot(self, image_index, selected_annotation_id):
+        controller = self.controller
+        if controller is None or controller.project is not self._undo_project:
+            return
+        controller.dirty = True
+        self.dataset.refresh(image_index)
+        if controller.current_image_index == image_index:
+            controller._render_current_annotations(selected_annotation_id)
+        else:
+            controller._update_actions()
+            controller._update_context()
+
+    def _sync_undo_project(self):
+        project = self.controller.project if self.controller is not None else None
+        if project is self._undo_project:
+            return
+        self._undo_project = project
+        self._pending_undo_capture = None
+        self.undo_stack.clear()
+
+    def _clear_undo_if_inference_started(self):
+        controller = self.controller
+        mode = getattr(getattr(controller, "mode", None), "value", "")
+        if mode in {"predicting", "batch", "resegmenting"}:
+            self.undo_stack.clear()
 
     def show_setup(self):
         self.setup_dialog.show()
@@ -211,6 +312,7 @@ class MainWindow(QMainWindow):
         self.status_context.setText(str(text))
 
     def set_project_title(self, text):
+        self._sync_undo_project()
         self.command_bar.project_label.setText(str(text))
 
     def show_canvas(self, enabled):
@@ -266,6 +368,9 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, str(title), str(message))
 
     def confirm(self, title, message, *, confirm_text=None):
+        # Single-object deletion is intentionally non-modal now that Undo exists.
+        if str(title) == "Delete Annotation":
+            return True
         dialog = QMessageBox(self)
         dialog.setIcon(QMessageBox.Question)
         dialog.setWindowTitle(str(title))
