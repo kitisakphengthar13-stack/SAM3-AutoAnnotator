@@ -10,6 +10,7 @@ from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
+from sam3_auto_annotator.gui.controller import AppController
 from sam3_auto_annotator.gui.controllers import WorkstationController
 from sam3_auto_annotator.gui.controllers.annotation_controller import AnnotationController
 from sam3_auto_annotator.gui.controllers.export_controller import ExportController
@@ -61,6 +62,11 @@ class WorkstationControllerTests(unittest.TestCase):
         self.assertIsInstance(self.controller.annotations, AnnotationController)
         self.assertIsInstance(self.controller.inference, InferenceController)
         self.assertIsInstance(self.controller.exports, ExportController)
+
+    def test_legacy_app_controller_is_only_an_alias(self):
+        self.assertIs(AppController, WorkstationController)
+        source = inspect.getsource(WorkstationController)
+        self.assertNotIn("class WorkstationController(AppController)", source)
 
     def test_active_use_case_controllers_do_not_reference_retired_inspector(self):
         for controller_type in (
