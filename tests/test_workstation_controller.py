@@ -94,8 +94,26 @@ class WorkstationControllerTests(unittest.TestCase):
         self.assertNotIn("remaining_prediction_targets", module_source)
         self.assertNotIn("set_prompt_error(", source)
 
-    def test_private_forwarding_api_is_gone(self):
+    def test_workstation_has_no_use_case_forwarding_api(self):
         for name in (
+            "open_image",
+            "open_folder",
+            "open_project",
+            "import_yolo",
+            "save_project",
+            "load_current_image",
+            "select_annotation",
+            "add_manual_box",
+            "canvas_box_changed",
+            "apply_box_fields",
+            "apply_selected_class",
+            "delete_selected",
+            "reset_selected",
+            "run_current",
+            "run_remaining",
+            "resegment_selected",
+            "export_labels",
+            "save_preview",
             "_load_project",
             "_sync_project_settings",
             "_render_current_annotations",
