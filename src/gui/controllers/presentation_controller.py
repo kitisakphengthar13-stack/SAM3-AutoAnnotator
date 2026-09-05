@@ -64,7 +64,7 @@ class PresentationController:
                 f"{image.image_name} is hidden by the current Dataset filter."
             )
         elif image is not None:
-            host._update_canvas_hint()
+            host.annotations.update_canvas_hint()
         self.update_actions()
         self.update_context()
 
@@ -85,7 +85,7 @@ class PresentationController:
             if image.width is None or image.height is None:
                 image.width, image.height = width, height
                 self.mark_dirty(refresh=False)
-            host._render_current_annotations()
+            host.annotations.render_current_annotations()
             host.view.set_message(
                 "Run SAM3, draw a box, or select an annotation to edit."
             )
@@ -96,7 +96,7 @@ class PresentationController:
             host.view.actions.select_tool.setChecked(True)
             host.view.dataset.refresh(image.image_index)
             host.view.annotation.set_annotations([])
-            host._clear_annotation_selection()
+            host.annotations.clear_selection()
             host.view.canvas_area.canvas_hint.setText(
                 f"Could not display {image.image_name}. Select another image or retry."
             )
@@ -110,8 +110,11 @@ class PresentationController:
         self.update_actions()
         self.update_context()
 
-    def mark_dirty(self, *, refresh=True):
-        self.host.dirty = True
+    def mark_dirty(self, *, refresh=True, history_managed=False):
+        host = self.host
+        host.dirty = True
+        if not history_managed:
+            host.view.history.mark_external_dirty()
         if refresh:
             self.update_actions()
             self.update_context()
@@ -143,7 +146,7 @@ class PresentationController:
         image = host.current_image
         annotation = host.selected_annotation
         prompts = parse_prompts(host.view.setup.prompts_text())
-        prompt_error = host._prompt_validation_error(prompts)
+        prompt_error = host.projects.prompt_validation_error(prompts)
         settings_valid = prompt_error is None
         model_text = host.view.setup.model_path_edit.text().strip()
         model_ok = bool(model_text) and Path(model_text).is_file()
