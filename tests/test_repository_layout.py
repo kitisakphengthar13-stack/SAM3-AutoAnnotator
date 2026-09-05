@@ -14,6 +14,8 @@ class RepositoryLayoutTests(unittest.TestCase):
             ROOT / "main.py",
             ROOT / "sam3_auto_annotator",
             ROOT / "images_test",
+            ROOT / "models",
+            ROOT / "outputs",
             SRC / "sam3_auto_annotator",
             SRC / "gui" / "controller.py",
         ):
@@ -69,6 +71,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             "layout-migration-v2.yml",
             "fix-layout-tests.yml",
             "fix-layout-tests-v2.yml",
+            "migrate-focused-test-callers.yml",
         }
         present = {path.name for path in workflow_dir.glob("*.yml")}
         self.assertTrue(retired.isdisjoint(present))
