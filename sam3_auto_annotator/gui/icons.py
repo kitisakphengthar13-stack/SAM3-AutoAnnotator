@@ -24,11 +24,14 @@ ICON_SPECS = {
     "state": IconSpec(QIcon.ThemeIcon.DocumentOpenRecent, QStyle.SP_DialogOpenButton),
     "save": IconSpec(QIcon.ThemeIcon.DocumentSave, QStyle.SP_DialogSaveButton),
     "sam3": IconSpec(QIcon.ThemeIcon.MediaPlaybackStart, QStyle.SP_MediaPlay),
-    # Qt has no cross-platform standard pixmap for these domain concepts.
     "draw": IconSpec(resource="draw-box.svg"),
     "trash": IconSpec(QIcon.ThemeIcon.EditDelete, QStyle.SP_TrashIcon),
     "export": IconSpec(QIcon.ThemeIcon.DocumentSaveAs, QStyle.SP_DialogSaveButton),
-    "fit": IconSpec(QIcon.ThemeIcon.ZoomFitBest, QStyle.SP_TitleBarMaxButton),
+    "fit": IconSpec(QIcon.ThemeIcon.ZoomFitBest, QStyle.SP_DialogResetButton),
+    "zoom_in": IconSpec(QIcon.ThemeIcon.ZoomIn, QStyle.SP_ArrowUp),
+    "zoom_out": IconSpec(QIcon.ThemeIcon.ZoomOut, QStyle.SP_ArrowDown),
+    "actual_size": IconSpec(QIcon.ThemeIcon.ZoomOriginal, QStyle.SP_DialogResetButton),
+    "fullscreen": IconSpec(QIcon.ThemeIcon.ViewFullscreen, QStyle.SP_TitleBarMaxButton),
     "setup": IconSpec(resource="setup.svg"),
     "annotate": IconSpec(resource="review-box.svg"),
     "results": IconSpec(resource="results.svg"),
@@ -40,13 +43,11 @@ ICON_SPECS = {
     "next": IconSpec(QIcon.ThemeIcon.GoNext, QStyle.SP_ArrowForward),
 }
 
-# Views use semantic names only and remain independent of any icon provider.
 ICONS = {name: name for name in ICON_SPECS}
 
 
-def icon(name, color=None, scale_factor=None):
+def icon(name):
     """Return a platform icon with a guaranteed QStyle fallback."""
-    del color, scale_factor
     spec = ICON_SPECS.get(name)
     if spec is None:
         return QIcon()
