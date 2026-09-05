@@ -22,7 +22,7 @@ class InferenceController:
 
     def settings(self):
         host = self.host
-        prompts = host._sync_project_settings(require_prompts=True)
+        prompts = host.projects.sync_project_settings(require_prompts=True)
         model_path = host.view.setup.model_path_edit.text().strip()
         validate_model_path(model_path)
         return {
@@ -110,14 +110,14 @@ class InferenceController:
             raise RuntimeError("Another SAM3 task is already running.")
         host.mode = mode
         host._task_project = host.project
-        host._update_actions()
+        host.presentation.update_actions()
 
     def finish_start_failure(self, exc):
         host = self.host
         host.mode = UiMode.READY if host.project is not None else UiMode.EMPTY
         host._task_project = None
-        host._update_actions()
-        host._report_error(
+        host.presentation.update_actions()
+        host.presentation.report_error(
             "Could Not Start SAM3",
             "SAM3 could not be started with the current settings.",
             "Select a valid model, enter at least one class, and retry.",
@@ -137,7 +137,7 @@ class InferenceController:
         self.host.view.set_message(message)
 
     def task_started(self, _kind):
-        self.host._update_actions()
+        self.host.presentation.update_actions()
 
     def batch_progress(self, current, total, image_path):
         host = self.host
@@ -153,13 +153,13 @@ class InferenceController:
         if prediction.width is not None and prediction.height is not None:
             image.width, image.height = prediction.width, prediction.height
         image.replace_sam3_drafts(prediction.annotations)
-        host._mark_dirty(refresh=False)
+        host.presentation.mark_dirty(refresh=False)
         host.view.dataset.refresh(image_index)
         if host.current_image_index == image_index:
-            host._render_current_annotations()
+            host.annotations.render_current_annotations()
             host.view.show_review()
         else:
-            host._update_context()
+            host.presentation.update_context()
         host.view.task_progress.show_result(
             f"SAM3 complete: {len(prediction.annotations)} annotations"
         )
@@ -169,7 +169,7 @@ class InferenceController:
         if host.project is host._task_project:
             image = host.project.get_image(image_index)
             image.mark_error(message)
-            host._mark_dirty(refresh=False)
+            host.presentation.mark_dirty(refresh=False)
             host.view.dataset.refresh(image_index)
         self.prediction_error(message)
 
@@ -185,11 +185,11 @@ class InferenceController:
                 result.polygon_xyn,
                 result.confidence,
             )
-            host._mark_dirty(refresh=False)
+            host.presentation.mark_dirty(refresh=False)
             if host.current_image_index == image_index:
-                host._render_current_annotations(annotation_id)
+                host.annotations.render_current_annotations(annotation_id)
             else:
-                host._update_context()
+                host.presentation.update_context()
             host.view.dataset.refresh(image_index)
             host.view.task_progress.show_result("Re-segmentation complete.")
         except Exception as exc:
@@ -206,10 +206,10 @@ class InferenceController:
         if prediction.width is not None and prediction.height is not None:
             image.width, image.height = prediction.width, prediction.height
         image.replace_sam3_drafts(prediction.annotations)
-        host._mark_dirty(refresh=False)
+        host.presentation.mark_dirty(refresh=False)
         host.view.dataset.refresh(image_index)
         if host.current_image_index == image_index:
-            host._render_current_annotations()
+            host.annotations.render_current_annotations()
 
     def batch_image_failed(self, image_index, message):
         host = self.host
@@ -217,7 +217,7 @@ class InferenceController:
             return
         image = host.project.get_image(image_index)
         image.mark_error(message)
-        host._mark_dirty(refresh=False)
+        host.presentation.mark_dirty(refresh=False)
         host.view.dataset.refresh(image_index)
 
     def batch_completed(self, summary):
@@ -259,8 +259,8 @@ class InferenceController:
         host = self.host
         host.mode = UiMode.READY if host.project is not None else UiMode.EMPTY
         host._task_project = None
-        host._update_actions()
-        host._update_context()
+        host.presentation.update_actions()
+        host.presentation.update_context()
         if host._close_pending:
             host._close_pending = False
             QTimer.singleShot(0, host.view.close)
