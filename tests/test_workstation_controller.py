@@ -82,11 +82,13 @@ class WorkstationControllerTests(unittest.TestCase):
                 self.assertNotIn("inspector", inspect.getsource(controller_type))
 
     def test_workstation_is_composition_not_reimplemented_use_cases(self):
+        module_source = inspect.getsource(inspect.getmodule(WorkstationController))
         source = inspect.getsource(WorkstationController)
-        self.assertNotIn("create_project(", source)
-        self.assertNotIn("save_state_to_output(", source)
-        self.assertNotIn("validate_model_path(", source)
-        self.assertNotIn("remaining_prediction_targets(", source)
+        self.assertNotIn("services.project_service", module_source)
+        self.assertNotIn("storage.image_catalog", module_source)
+        self.assertNotIn("save_state_to_output", module_source)
+        self.assertNotIn("validate_model_path", module_source)
+        self.assertNotIn("remaining_prediction_targets", module_source)
         self.assertNotIn("set_prompt_error(", source)
 
     def test_export_methods_route_through_extracted_controller(self):
