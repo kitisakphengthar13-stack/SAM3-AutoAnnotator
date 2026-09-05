@@ -2,152 +2,166 @@
 
 ## 1. Start the application
 
-Launch the repository's desktop entry point directly:
+Launch from the repository root:
 
 ```powershell
 .\.venv\Scripts\python.exe main.py
 ```
 
-If the virtual environment is activated, `python main.py` is equivalent. The
-window restores its previous geometry and splitter sizes through Qt settings.
-Project data is separate and is restored only by opening an
-`annotation_state.json` file.
+The window restores Qt geometry/dock state. Project data is separate and returns
+only when you open a saved `annotation_state.json`.
 
 ## 2. Open or resume work
 
-Choose one of these starting actions:
-
 - **Open Image** starts a one-image project.
-- **Open Folder** loads supported images directly in one folder. It does not
-  scan subfolders.
-- **Open Project** resumes a saved `annotation_state.json`.
+- **Open Folder** loads supported images directly in one folder; it is
+  non-recursive.
+- **Open Project** resumes `annotation_state.json`.
 
-Supported image suffixes are `.jpg`, `.jpeg`, `.png`, `.bmp`, `.tif`,
-`.tiff`, and `.webp`.
+Supported image suffixes: `.jpg`, `.jpeg`, `.png`, `.bmp`, `.tif`, `.tiff`,
+`.webp`.
 
-Every image in one folder must have a unique filename stem. For example,
-`frame01.jpg` and `frame01.png` cannot coexist in one project because both would
-map to `frame01.txt` in YOLO output.
+Images in one folder need unique filename stems because YOLO files are generated
+from those stems.
 
-## 3. Configure the project
+## 3. Understand the workstation
 
-The **Setup** tab owns project-level settings:
+The application is canvas-first:
 
-- **Output** is the directory for the state and exported artifacts.
-- **Model** is a local SAM3 `.pt` checkpoint.
-- **Classes** are SAM3 text prompts, entered one per line or comma-separated.
-- **Confidence** accepts values from `0.01` through `1.00`.
-- **fp16** requests 16-bit inference; disable it when the execution environment
-  does not support that precision reliably.
+- **Dataset dock**: image search/filter/list and navigation.
+- **Canvas**: image, objects, overlays, Select/Pan/Box tools, active class, zoom,
+  Fit, and task progress.
+- **Objects dock**: object list and compact selected-object controls.
+- **Setup**: transient configuration dialog.
+- **Export**: transient preflight/result dialog.
 
-Prompt order defines stable class IDs. If the prompts are `person`, `car`, and
-`dog`, their class IDs are `0`, `1`, and `2` respectively. Prompt names must
-be unique.
+Dataset and Objects can be closed, moved, floated, and restored from **View**.
+**Focus Workspace** hides them temporarily. **F11** is actual window fullscreen;
+**Fit** only changes image framing.
 
-## 4. Create or import draft annotations
+## 4. Configure the project
 
-### SAM3 on one image
+Open **Setup**. Its fields are staged drafts:
 
-Select an image and choose **Run SAM3**. The task runs outside the main GUI
-thread. Successful results replace the SAM3 drafts for that image and set its
-status to `predicted`; an empty result sets `no_detection`.
+- **Output**: project/export destination.
+- **Model**: local SAM3 `.pt` checkpoint.
+- **Classes**: text prompts, one per line or comma-separated.
+- **Confidence**: `0.01` through `1.00`.
+- **fp16**: request 16-bit inference when supported.
 
-### SAM3 on pending images
+Prompt order defines stable class IDs. Prompt names must be unique.
 
-Choose **Run Pending (N)** to process only images with `not_predicted` or
-`error` status. `N` is the number currently eligible; the action is disabled at
-zero. It does not overwrite predicted, edited, reviewed, or no-detection images.
-**Cancel Batch** appears only for this batch and stops after the current
-inference call finishes.
+**Apply** validates then commits the configuration once. **Cancel** or closing the
+dialog discards the draft. Removing a class currently used by annotations is
+rejected before any other staged setting is committed.
 
-### Existing YOLO detection labels
+Loading a saved project does not force Setup open.
 
-Choose **Import YOLO**, then select the directory containing `.txt` files in
-this format:
+## 5. Create or import draft annotations
+
+### Run SAM3 on the current image
+
+Select an image and use **Run SAM3**. The task runs outside the GUI thread. If the
+image already contains active annotations, replacing them may require confirmation.
+
+### Run pending images
+
+Use **Run Pending (N)** for images whose status is `not_predicted` or `error`.
+Predicted, edited, reviewed, and no-detection images are skipped. Batch cancel is
+cooperative and takes effect after the current inference call.
+
+### Import YOLO detections
+
+Use **Import YOLO** and choose a label folder containing rows in this format:
 
 ```text
 class_id x_center y_center width height
 ```
 
-Coordinates must be normalized. Label files match image files by stem. Missing
-files leave the image untouched; empty files mark it `no_detection`; malformed
-rows are skipped and included in the import result. Unknown class IDs receive a
-generated name such as `class_4`.
+Coordinates are normalized. Files match images by stem. Missing files leave images
+untouched; empty files mark no detection; malformed rows are skipped. Unknown class
+IDs receive generated names such as `class_4`.
 
-## 5. Review and edit
+Import is a project operation, not a Setup control.
 
-The workspace has three resizable regions:
+## 6. Navigate and edit the canvas
 
-- **Dataset**: search, status filter, image list, and review counts.
-- **Canvas**: image, box/mask/polygon overlays, draw control, fit control, and
-  task progress.
-- **Inspector**: Setup, Review, and Export tabs.
+Tools are explicit and mutually exclusive:
 
-On the canvas you can select a box, drag it, resize it with handles, or draw a
-new box. The **Review** tab keeps image-level review separate from
-selected-annotation controls and provides precise class and `x1, y1, x2, y2`
-editing, re-segmentation, reset, and deletion.
+- **Select (`Esc`)**: select, move, and resize objects.
+- **Pan (`P`)**: pan without editing objects.
+- **Box (`B`)**: draw a new box using the visible active class.
+- Hold **Space** for temporary pan.
 
-Editing a SAM3 box or class marks the image `edited` and invalidates the old
-polygon. This prevents a polygon derived from old geometry from being exported
-as if it were still correct.
+The active class beside the canvas is the class for the **next new box**. It is
+independent of the class editor for the selected existing object.
 
-Apply actions are enabled only after their corresponding value changes.
-Applying an unchanged class or unchanged coordinates is a no-op: it does not
-mark the project dirty or invalidate a valid segmentation. **Reset to SAM3** is
-available only when the selected annotation actually differs from its original
-SAM3 snapshot, and **Mark Image Reviewed** disables once the image is reviewed.
+Canvas objects display class and, when available, confidence. Use Zoom Out,
+**100%**, Zoom In, Fit, or the mouse wheel for scale changes.
 
-Use these correction actions when appropriate:
+The Objects dock provides precise class and `x1, y1, x2, y2` editing plus
+Re-segment, Reset, and Delete.
 
-- **Re-segment** asks SAM3 for a new polygon using the current box and
-  class.
-- **Reset to SAM3** restores the original SAM3 box, class, and available
-  polygon snapshot.
-- **Mark Image Reviewed** records that the current image has been checked.
+Changing a SAM3 box or class marks it edited and invalidates segmentation derived
+from old geometry/class. Unchanged Apply operations are no-ops.
+
+### Undo and delete
+
+Completed add, move/resize, class change, coordinate Apply, Reset, and Delete
+operations are undoable. Single-object Delete does not show a confirmation dialog;
+Undo is the recovery path.
+
+Inference is a separate mutation boundary. Starting model-generated replacement or
+re-segmentation clears stale object-edit undo history so old snapshots cannot be
+replayed into new model state.
+
+### Re-segment and reset
+
+- **Re-segment** asks SAM3 for a new polygon from the current selected box.
+- **Reset to SAM3** restores the original SAM3 geometry/class snapshot when one
+  exists.
 
 Direct point-by-point polygon editing is not implemented.
 
-## 6. Save and export
+## 7. Review and move forward
 
-### Save Project
+Use **Review & Next (`R`)** to mark the current image reviewed and advance to the
+next visible image when one exists. Previous/Next remain independent navigation
+commands. Dataset filtering changes which images are considered visible.
 
-**Save Project** writes `annotation_state.json` with images, prompts, settings,
-statuses, and editable annotations. Saving uses a temporary file and atomic
-replacement so an interrupted write is less likely to corrupt the prior state.
+## 8. Save
 
-Save after meaningful review work and after a partial or completed batch.
+**Save Project** writes `annotation_state.json` containing prompts, settings,
+statuses, image records, and editable annotations. The save uses temporary-file
+replacement to protect the previous state from interrupted writes.
 
-### Export Labels
+Save after meaningful review work and after partial/completed batch inference.
 
-**Export Labels** derives artifacts from the current editable state:
+## 9. Export
 
-- `sam3_auto_annotation_box_outputs.csv` contains active boxes and normalized
-  detection coordinates.
-- `yolo_labels/detection/*.txt` contains current YOLO detection labels.
-- `yolo_labels/segmentation/*.txt` contains only currently valid polygons.
-- `segmentation_skipped_report.json` explains each omitted stale, missing, or
-  invalid segmentation and appears only when needed.
-- `run_summary.json` records counts, project settings, and generated paths.
+Press **Ctrl+E** or choose **Export**. This opens preflight; it does **not** write
+files merely by opening.
 
-**Save Preview** creates a reviewed image using the overlays currently enabled
-in the canvas. Preview images are for inspection, not training labels.
+Preflight summarizes:
 
-## Layout and command placement
+- reviewed images;
+- images still needing review;
+- unpredicted/failed images;
+- stale or missing segmentation.
 
-The top command bar contains only project-level open/save commands. Prediction
-actions stay in the Setup footer, annotation actions stay in Review, canvas
-actions stay beside the canvas, and final-output actions stay in Export. This
-keeps one emphasized primary action per surface and prevents unrelated widgets
-from stretching one another.
+Use **Export Now** when ready. When warnings remain the explicit action becomes
+**Export Anyway**.
 
-Setup and Export use an internal vertical scroll area with a pinned action
-footer. Review scrolls only the selected-annotation editor while preserving
-usable space for the annotation table. Long paths and status text are elided by
-their owning widgets and remain available through tooltips.
+Generated artifacts include:
 
-The minimum supported window is **960 x 620**; **1360 x 840** is the reference
-working size. Splitter handles remain user-adjustable at both sizes.
+- `sam3_auto_annotation_box_outputs.csv`;
+- `yolo_labels/detection/*.txt`;
+- `yolo_labels/segmentation/*.txt` for currently valid polygons only;
+- `segmentation_skipped_report.json` when segmentation is omitted;
+- `run_summary.json`.
+
+**Save Preview** creates an inspection image using current overlays; it is not a
+training label.
 
 ## Image statuses
 
@@ -155,9 +169,9 @@ working size. Splitter handles remain user-adjustable at both sizes.
 |---|---|
 | `not_predicted` | No imported or SAM3 result has been applied. |
 | `predicted` | SAM3 produced one or more draft annotations. |
-| `edited` | A person changed the current editable annotations. |
-| `reviewed` | A person explicitly marked the image reviewed. |
-| `no_detection` | Prediction/import completed but produced no active object. |
+| `edited` | A person changed editable annotations. |
+| `reviewed` | A person explicitly reviewed the image. |
+| `no_detection` | Prediction/import completed with no active object. |
 | `error` | The last automated operation failed for this image. |
 
 ## Keyboard shortcuts
@@ -169,32 +183,43 @@ working size. Splitter handles remain user-adjustable at both sizes.
 | `Ctrl+Alt+O` | Open project |
 | `Ctrl+I` | Import YOLO labels |
 | `Ctrl+S` | Save project |
+| `Ctrl+,` | Setup |
 | `F5` | Run SAM3 on current image |
 | `Shift+F5` | Run pending images |
-| `B` | Toggle box drawing |
+| `Esc` | Select tool |
+| `P` | Pan tool |
+| `B` | Box tool |
+| `Space` | Temporary pan |
 | `Delete` | Delete selected annotation |
-| `Ctrl+Return` | Apply edited box coordinates |
+| `Ctrl+Z` / `Ctrl+Y` | Undo / Redo (platform standard actions) |
+| `Ctrl+Return` | Apply exact box coordinates |
 | `Ctrl+R` | Re-segment selected box |
-| `R` | Mark current image reviewed |
-| `F` | Fit image to canvas |
+| `R` | Review & Next |
+| `F` | Fit image |
+| `Ctrl+0` | 100% image scale |
+| `Ctrl+-` / `Ctrl++` | Zoom out / in |
 | `Alt+Left` / `Alt+Right` | Previous / next visible image |
-| `Ctrl+E` | Export labels |
+| `Ctrl+Shift+F` | Focus Workspace |
+| `F11` | Fullscreen |
+| `Ctrl+E` | Open Export preflight |
 
-Shortcuts are implemented as shared Qt actions, so menu entries, toolbar
-buttons, inspector buttons, enabled state, tooltip, and shortcut refer to one
-command definition.
+Shared Qt actions keep menu/toolbar/button enabled state, tooltip, and shortcut tied
+to one command definition.
 
 ## Recovery and diagnostics
 
-- If an image cannot be decoded, the canvas is cleared and replaced by an
-  inline error state. Use **Retry** after repairing the file, or select another
-  image; the previous image is never left visible as if it were the failed one.
-- If inference fails, keep the image at `error`, correct the
-  model/prompt/runtime problem, and use **Run Pending (N)** to retry it.
-- If a segmentation is skipped, inspect
-  `segmentation_skipped_report.json`, correct the box, and use **Re-segment from
-  Box**.
-- If the application reports an unexpected error, use the diagnostic log path
-  shown in the dialog. Saved project data is separate from that report.
-- If the window layout becomes inconvenient, resize the splitter regions; Qt
-  persists the resulting geometry for the next launch.
+- Image decode failure clears stale canvas graphics and shows an inline Retry state.
+- Inference failure marks the image `error`; fix the model/prompt/runtime issue and
+  retry directly or through Run Pending.
+- For skipped segmentation, inspect `segmentation_skipped_report.json`, correct the
+  object, and Re-segment when appropriate.
+- Unexpected errors include the diagnostic log path in the dialog.
+- If dock placement becomes inconvenient, restore panels from View and reposition
+  them; Qt persists `QMainWindow` state for the next launch.
+
+## Verification limits
+
+Automated offscreen tests validate workflow and architecture behavior but do not
+replace visible Windows checks for native maximize/fullscreen, DPI scaling, dock
+hit targets, text clipping, or toolbar behavior. Real SAM3/CUDA inference likewise
+requires the target GPU/checkpoint.
