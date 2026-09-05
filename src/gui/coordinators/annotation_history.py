@@ -4,14 +4,14 @@ from dataclasses import dataclass
 
 from PySide6.QtGui import QUndoStack
 
-from gui.undo import AnnotationSnapshotCommand
+from gui.undo import AnnotationSnapshotCommand, AnnotationStateSnapshot
 
 
 @dataclass(frozen=True)
 class _EditCapture:
     project: object
     image: object
-    before: dict
+    before: AnnotationStateSnapshot
     text: str
     selected_annotation_id: str | None
 
@@ -64,7 +64,7 @@ class AnnotationHistoryCoordinator:
         return _EditCapture(
             project=controller.project,
             image=image,
-            before=image.to_dict(),
+            before=AnnotationStateSnapshot.capture(image),
             text=str(text),
             selected_annotation_id=controller.selected_annotation_id,
         )
@@ -76,7 +76,7 @@ class AnnotationHistoryCoordinator:
         if controller is None or controller.project is not capture.project:
             self.sync_project()
             return False
-        after = capture.image.to_dict()
+        after = AnnotationStateSnapshot.capture(capture.image)
         if capture.before == after:
             return False
         self.stack.push(
