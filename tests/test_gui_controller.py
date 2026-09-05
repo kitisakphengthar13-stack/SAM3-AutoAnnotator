@@ -90,8 +90,11 @@ class GuiControllerTests(unittest.TestCase):
             half=False,
         )
         self.controller._load_project(project)
+        QApplication.processEvents()
 
     def tearDown(self):
+        self.window.controller = None
+        self.window.close()
         self.window.deleteLater()
         QApplication.processEvents()
         self.temp_dir.cleanup()
@@ -110,31 +113,59 @@ class GuiControllerTests(unittest.TestCase):
         self.assertTrue(self.window.setup.browse_model_button.isEnabled())
         self.assertTrue(self.window.setup.browse_output_button.isEnabled())
 
-    def test_removing_a_class_in_use_cannot_corrupt_manual_annotations(self):
+    def test_setup_draft_does_not_mutate_project_until_apply(self):
+        self.window.show_setup()
+        QApplication.processEvents()
+        self.window.setup.prompts_edit.setPlainText("car\ntruck")
+
+        self.assertEqual(self.controller.project.prompts, ["car"])
+        self.assertEqual(self.window.annotation.class_combo.count(), 1)
+
+        self.window.setup.apply_button.click()
+        QApplication.processEvents()
+
+        self.assertEqual(self.controller.project.prompts, ["car", "truck"])
+        self.assertEqual(self.window.annotation.class_combo.count(), 2)
+        self.assertFalse(self.window.setup_dialog.isVisible())
+
+    def test_removing_a_class_in_use_is_rejected_on_apply_without_corrupting_data(self):
         image = self.controller.current_image
         add_manual_annotation(image, 0, "car", (5, 5, 30, 30))
         self.controller._render_current_annotations()
         before = len(image.active_annotations)
+        self.window.show_setup()
+        QApplication.processEvents()
 
         self.window.setup.prompts_edit.setPlainText("truck")
 
+        # Typing is only a draft. Existing project data and enabled workflow stay
+        # untouched until Apply requests validation.
         self.assertEqual(self.controller.project.prompts, ["car"])
         self.assertEqual(self.window.annotation.class_combo.itemText(0), "car")
+        self.assertTrue(self.window.setup.prompt_validation_label.isHidden())
+
+        self.window.setup.apply_button.click()
+        QApplication.processEvents()
+
+        self.assertEqual(self.controller.project.prompts, ["car"])
         self.assertFalse(self.window.setup.prompt_validation_label.isHidden())
+        self.assertTrue(self.window.setup_dialog.isVisible())
         self.assertFalse(self.window.actions.draw_box.isEnabled())
         self.assertFalse(self.window.actions.export.isEnabled())
 
         self.controller.add_manual_box((35, 5, 60, 30))
-
         self.assertEqual(len(image.active_annotations), before)
         self.assertEqual(len(self.errors), 1)
         self.assertIn("Classes in use cannot be removed", self.errors[0][1]["details"])
 
         self.window.setup.prompts_edit.setPlainText("car\ntruck")
+        self.window.setup.apply_button.click()
+        QApplication.processEvents()
 
         self.assertEqual(self.controller.project.prompts, ["car", "truck"])
         self.assertTrue(self.window.setup.prompt_validation_label.isHidden())
         self.assertTrue(self.window.actions.draw_box.isEnabled())
+        self.assertFalse(self.window.setup_dialog.isVisible())
 
     def test_canvas_context_updates_after_annotation_change(self):
         self.assertIn("0 annotations", self.window.canvas_area.canvas_hint.text())
