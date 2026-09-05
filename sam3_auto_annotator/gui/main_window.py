@@ -24,6 +24,7 @@ from sam3_auto_annotator.gui.views.results_panel import ResultsPanel
 from sam3_auto_annotator.gui.views.setup_panel import SetupPanel
 from sam3_auto_annotator.gui.views.workspace import CanvasWorkspace
 from sam3_auto_annotator.gui.widgets.elided_label import ElidedLabel
+from sam3_auto_annotator.services.project_service import parse_prompts
 
 
 IMAGE_FILTER = "Images (*.jpg *.jpeg *.png *.bmp *.tif *.tiff *.webp)"
@@ -90,8 +91,6 @@ class MainWindow(QMainWindow):
         )
         self.annotation.setMinimumWidth(280)
 
-        # Reuse the class list but keep drawing-class selection independent from
-        # selected-object class editing.
         self.canvas_area.active_class_combo.setModel(self.annotation.class_combo.model())
 
         self.view_menu.addSeparator()
@@ -186,8 +185,6 @@ class MainWindow(QMainWindow):
                 lambda _checked=False, label=text: self._begin_undoable_edit(label)
             )
 
-        # These slots are connected before AppController, so the legacy class
-        # reader receives the visible active drawing class for this operation.
         self.canvas.box_drawn.connect(self._prepare_active_class_for_draw)
         self.canvas.box_drawn.connect(
             lambda _box: self._begin_undoable_edit("Add annotation")
@@ -293,8 +290,6 @@ class MainWindow(QMainWindow):
 
     def show_setup(self):
         if not self.setup_dialog.isVisible():
-            # Project loading opens this surface before set_project() fills it.
-            # Capturing on the next event turn records the populated values.
             self._setup_snapshot_pending = True
             QTimer.singleShot(0, self._capture_setup_snapshot)
         self.setup_dialog.show()
@@ -308,6 +303,15 @@ class MainWindow(QMainWindow):
         self._setup_snapshot = self.setup.snapshot()
 
     def _apply_setup(self):
+        controller = self.controller
+        if controller is not None and controller.project is not None:
+            prompts = parse_prompts(self.setup.prompts_text())
+            prompt_error = controller._prompt_validation_error(prompts)
+            if prompt_error:
+                self.setup.set_prompt_error(prompt_error)
+                controller._update_actions()
+                controller._update_context()
+                return
         self.setup.settings_changed.emit()
         if self.setup.prompt_validation_label.isVisible():
             return
@@ -320,6 +324,9 @@ class MainWindow(QMainWindow):
             self.setup.restore_snapshot(self._setup_snapshot)
         self._setup_snapshot = None
         self._setup_snapshot_pending = False
+        if self.controller is not None:
+            self.controller._update_actions()
+            self.controller._update_context()
 
     def show_review(self):
         self.annotation_dock.show()
