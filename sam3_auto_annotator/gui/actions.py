@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QObject
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 
 from sam3_auto_annotator.gui.icons import ICONS, icon
 
@@ -44,10 +44,25 @@ class AppActions(QObject):
             "Run Pending", "sam3", "Shift+F5",
             "Run SAM3 on every not-predicted or failed image.",
         )
-        self.draw_box = self._action(
-            "Draw Box", "draw", "B",
-            "Toggle manual box drawing on the image.", checkable=True,
+
+        self.select_tool = self._action(
+            "Select", "annotate", "Escape",
+            "Select, move, or resize annotations.", checkable=True,
         )
+        self.pan_tool = self._action(
+            "Pan", "previous", "P",
+            "Pan the image without changing annotations.", checkable=True,
+        )
+        self.draw_box = self._action(
+            "Box", "draw", "B",
+            "Draw a bounding box using the active class.", checkable=True,
+        )
+        self.canvas_tool_group = QActionGroup(self)
+        self.canvas_tool_group.setExclusive(True)
+        for action in (self.select_tool, self.pan_tool, self.draw_box):
+            self.canvas_tool_group.addAction(action)
+        self.select_tool.setChecked(True)
+
         self.delete_annotation = self._action(
             "Delete", "trash", QKeySequence.StandardKey.Delete,
             "Delete the selected annotation.", role="danger",
@@ -153,6 +168,8 @@ class AppActions(QObject):
             self.save,
             self.run_current,
             self.run_remaining,
+            self.select_tool,
+            self.pan_tool,
             self.draw_box,
             self.delete_annotation,
             self.export,
