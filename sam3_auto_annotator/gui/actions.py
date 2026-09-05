@@ -85,6 +85,10 @@ class AppActions(QObject):
             "Export Now", "export", None,
             "Write corrected labels using the reviewed export plan.", role="export",
         )
+        # Neither export surface is valid before a project is ready. Keeping the
+        # write action disabled from construction also makes the preflight mirror
+        # deterministic: the first controller enable transition emits changed().
+        self.export.setEnabled(False)
         self.export_dialog.setEnabled(False)
         self.export.changed.connect(
             lambda: self.export_dialog.setEnabled(self.export.isEnabled())
