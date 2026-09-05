@@ -5,8 +5,8 @@ reviewing object annotations with optional SAM3 assistance. Model predictions ar
 editable drafts: correct boxes/classes, import YOLO detections, re-segment corrected
 boxes, save resumable project state, and export reviewed data.
 
-This repository is intentionally **GUI-only**. It is not a pip-distributed package
-and does not provide a command-line annotation workflow.
+This repository is intentionally **GUI-only**. It does not provide a command-line
+annotation workflow.
 
 ## What it does
 
@@ -29,9 +29,10 @@ and does not provide a command-line annotation workflow.
 - A local SAM3 `.pt` checkpoint for inference.
 - A CUDA-capable GPU is strongly recommended for practical SAM3 inference.
 
-Model checkpoints are local runtime assets and ignored by Git. Place a checkpoint
-in `models/`; the application prefers a filename starting with `sam3`, or the sole
-`.pt` file when only one exists.
+Use **Setup -> Model -> Browse** to choose a checkpoint. Automatic model discovery
+looks in the application's user-data `models` directory, not in the repository.
+On Windows the default application home is
+`%LOCALAPPDATA%\SAM3-AutoAnnotator`; set `SAM3_AUTOANNOTATOR_HOME` to override it.
 
 ## Install and launch
 
@@ -44,8 +45,7 @@ py -m venv .venv
 .\.venv\Scripts\python.exe src/main.py
 ```
 
-If `.venv` is already prepared, only the final command is needed. Do not run
-`pip install -e .`; this project deliberately has no packaging or CLI entry point.
+If `.venv` is already prepared, only the final command is needed.
 
 ## Recommended workflow
 
@@ -100,18 +100,38 @@ QMainWindow
   project-level replacement may still request confirmation.
 
 The minimum supported window is **960 x 620**; **1360 x 840** is the reference
-working size. The current outcome-based UI contract lives in
-[UI audit](docs/ui-audit.md).
-
+working size. The outcome-based UI contract lives in [UI audit](docs/ui-audit.md).
 For detailed controls, shortcuts, recovery behavior, and import rules, see
 [User guide](docs/user-guide.md).
 
-## Output
+## Application data and output
 
-A project normally writes to `outputs/<project_name>/`:
+The repository is source code only. Runtime assets and generated projects are not
+created under the repository root.
+
+Default application home:
 
 ```text
-outputs/<project_name>/
+Windows: %LOCALAPPDATA%\SAM3-AutoAnnotator\
+macOS:   ~/Library/Application Support/SAM3-AutoAnnotator/
+Linux:   $XDG_DATA_HOME/sam3-autoannotator/
+         or ~/.local/share/sam3-autoannotator/
+```
+
+`SAM3_AUTOANNOTATOR_HOME` overrides that location on every platform. The default
+subdirectories are:
+
+```text
+<app-home>/
+|-- models/                  # optional automatic checkpoint discovery
+`-- projects/
+    `-- <project_name>/      # default output when Setup does not override it
+```
+
+A project output contains:
+
+```text
+<project_name>/
 |-- annotation_state.json
 |-- sam3_auto_annotation_box_outputs.csv
 |-- yolo_labels/
@@ -139,24 +159,23 @@ train/validation/test splits.
 SAM3-AutoAnnotator/
 |-- src/
 |   |-- main.py                     # executable composition root
-|   |-- app_paths.py
+|   |-- app_paths.py                # OS user-data locations
 |   |-- logging_setup.py
 |   |-- version.py
-|   |-- domain/                      # project/annotation rules
-|   |-- services/                    # project, prediction, edit, export use cases
-|   |-- sam3/                        # Ultralytics adapter/result mapping
-|   |-- storage/                     # image/JSON/CSV/YOLO persistence
-|   `-- gui/                         # PySide6 workstation
+|   |-- domain/                     # project/annotation rules
+|   |-- services/                   # project, prediction, edit, export use cases
+|   |-- sam3/                       # Ultralytics adapter/result mapping
+|   |-- storage/                    # image/JSON/CSV/YOLO persistence
+|   `-- gui/                        # PySide6 workstation
 |-- tests/
-|   `-- fixtures/images/             # small integration fixtures
+|   `-- fixtures/images/            # small integration fixtures
 |-- docs/
 |-- requirements.txt
 `-- .gitignore
 ```
 
 `src/main.py` is the only executable entrypoint. There is no project-name wrapper
-package and no root forwarding script. Generated `outputs/` and local `models/`
-are runtime directories ignored by Git.
+package and no root forwarding script.
 
 ## Known limitation
 
