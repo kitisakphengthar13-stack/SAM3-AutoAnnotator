@@ -3,6 +3,7 @@ from __future__ import annotations
 from sam3_auto_annotator.gui.controller import AppController
 from sam3_auto_annotator.gui.controllers.annotation_controller import AnnotationController
 from sam3_auto_annotator.gui.controllers.export_controller import ExportController
+from sam3_auto_annotator.gui.controllers.inference_controller import InferenceController
 from sam3_auto_annotator.gui.controllers.project_controller import ProjectController
 
 
@@ -17,6 +18,7 @@ class WorkstationController(AppController):
     def __init__(self, *args, **kwargs):
         self.annotations = AnnotationController(self)
         self.projects = ProjectController(self)
+        self.inference = InferenceController(self)
         self.exports = ExportController(self)
         super().__init__(*args, **kwargs)
 
@@ -69,6 +71,37 @@ class WorkstationController(AppController):
 
     def _after_annotation_change(self, select_id=None):
         return self.annotations.after_annotation_change(select_id)
+
+    # Inference result workflow ------------------------------------------
+    def prediction_ready(self, image_index, prediction):
+        return self.inference.prediction_ready(image_index, prediction)
+
+    def prediction_failed(self, image_index, message):
+        return self.inference.prediction_failed(image_index, message)
+
+    def segmentation_ready(self, image_index, annotation_id, result):
+        return self.inference.segmentation_ready(image_index, annotation_id, result)
+
+    def segmentation_failed(self, image_index, annotation_id, message):
+        return self.inference.segmentation_failed(image_index, annotation_id, message)
+
+    def batch_image_ready(self, image_index, prediction):
+        return self.inference.batch_image_ready(image_index, prediction)
+
+    def batch_image_failed(self, image_index, message):
+        return self.inference.batch_image_failed(image_index, message)
+
+    def batch_completed(self, summary):
+        return self.inference.batch_completed(summary)
+
+    def batch_cancelled(self, summary):
+        return self.inference.batch_cancelled(summary)
+
+    def task_failed(self, message):
+        return self.inference.task_failed(message)
+
+    def _prediction_error(self, message, exc=None):
+        return self.inference.prediction_error(message, exc)
 
     # Export workflow -----------------------------------------------------
     def export_labels(self):
