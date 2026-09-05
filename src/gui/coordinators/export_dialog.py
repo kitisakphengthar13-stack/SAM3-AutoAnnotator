@@ -39,6 +39,3 @@ class ExportDialogCoordinator:
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
-
-    def bypass_incomplete_confirmation(self, title):
-        return str(title) == "Incomplete Images" and self.window.results_dialog.isVisible()
