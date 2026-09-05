@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
@@ -11,6 +12,7 @@ from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtGui import QImage, QKeyEvent
 from PySide6.QtWidgets import QApplication, QDockWidget, QGraphicsView
 
+from sam3_auto_annotator.core import Annotation, AnnotationSource, ImageRecord, ImageStatus
 from sam3_auto_annotator.gui.main_window import MainWindow
 
 
@@ -75,6 +77,18 @@ class GuiUiAuditTests(unittest.TestCase):
         self.assertTrue(window.dataset_dock.features() & closable)
         self.assertTrue(window.annotation_dock.features() & closable)
 
+    def test_closed_docks_have_explicit_view_menu_restore_actions(self):
+        window = self.make_window()
+        window.dataset_dock.close()
+        QCoreApplication.processEvents()
+        self.assertFalse(window.dataset_dock.isVisible())
+
+        actions = [action for action in window.view_menu.actions() if action.text()]
+        dataset_action = next(action for action in actions if action.text() == "Dataset Panel")
+        dataset_action.trigger()
+        QCoreApplication.processEvents()
+        self.assertTrue(window.dataset_dock.isVisible())
+
     def test_focus_workspace_hides_and_restores_side_panels(self):
         window = self.make_window()
         self.assertTrue(window.dataset_dock.isVisible())
@@ -103,19 +117,94 @@ class GuiUiAuditTests(unittest.TestCase):
         QCoreApplication.processEvents()
         self.assertTrue(window.results_dialog.isVisible())
 
-    def test_active_drawing_class_is_visible_on_canvas_and_uses_project_class_model(self):
+    def test_export_entry_is_preflight_not_the_disk_write_action(self):
+        window = self.make_window()
+        reviewed = ImageRecord("reviewed.png", 0, status=ImageStatus.REVIEWED)
+        pending = ImageRecord(
+            "pending.png",
+            1,
+            status=ImageStatus.NOT_PREDICTED,
+            annotations=[
+                Annotation(
+                    0,
+                    "car",
+                    (1, 1, 20, 20),
+                    source=AnnotationSource.MANUAL,
+                )
+            ],
+        )
+        window.controller = SimpleNamespace(
+            project=SimpleNamespace(images=[reviewed, pending])
+        )
+        window.actions.export.setEnabled(True)
+
+        window.actions.export_dialog.trigger()
+        QCoreApplication.processEvents()
+
+        self.assertTrue(window.results_dialog.isVisible())
+        self.assertIn("Reviewed images: 1/2", window.results.result_counts_label.text())
+        self.assertIn("Unpredicted / failed: 1", window.results.result_counts_label.text())
+        self.assertEqual(window.actions.export.text(), "Export Anyway")
+        self.assertEqual(window.actions.export_dialog.shortcut().toString(), "Ctrl+E")
+        self.assertTrue(window.actions.export.shortcut().isEmpty())
+
+    def test_active_drawing_class_is_visible_and_independent_from_selected_class(self):
         window = self.make_window()
         window.annotation.set_classes(["car", "person", "truck"])
+        window.annotation.class_combo.setCurrentIndex(0)
         QCoreApplication.processEvents()
 
         active = window.canvas_area.active_class_combo
         self.assertEqual(active.count(), 3)
-        self.assertEqual(active.itemText(0), "car")
-        self.assertEqual(active.itemText(2), "truck")
-
         active.setCurrentIndex(2)
         QCoreApplication.processEvents()
-        self.assertEqual(window.annotation.class_combo.currentIndex(), 2)
+
+        self.assertEqual(active.currentText(), "truck")
+        self.assertEqual(window.annotation.class_combo.currentText(), "car")
+
+    def test_canvas_tools_are_explicit_and_exclusive(self):
+        window = self.make_window()
+        self.load_canvas(window)
+        self.assertTrue(window.actions.select_tool.isChecked())
+
+        window.actions.pan_tool.trigger()
+        QCoreApplication.processEvents()
+        self.assertTrue(window.actions.pan_tool.isChecked())
+        self.assertFalse(window.actions.select_tool.isChecked())
+        self.assertEqual(window.canvas.dragMode(), QGraphicsView.ScrollHandDrag)
+
+        window.actions.draw_box.trigger()
+        QCoreApplication.processEvents()
+        self.assertTrue(window.actions.draw_box.isChecked())
+        self.assertFalse(window.actions.pan_tool.isChecked())
+        self.assertTrue(window.canvas._draw_mode)
+        self.assertEqual(window.canvas.dragMode(), QGraphicsView.NoDrag)
+
+        press = QKeyEvent(QEvent.KeyPress, Qt.Key_Escape, Qt.NoModifier)
+        window.canvas.keyPressEvent(press)
+        self.assertTrue(window.actions.select_tool.isChecked())
+        self.assertFalse(window.canvas._draw_mode)
+
+    def test_canvas_object_labels_show_class_and_confidence(self):
+        window = self.make_window()
+        self.load_canvas(window)
+        annotation = Annotation(
+            0,
+            "car",
+            (10, 10, 80, 60),
+            id="ann-label",
+            confidence=0.91,
+        )
+        window.canvas.set_annotations([annotation])
+        QCoreApplication.processEvents()
+
+        box = window.canvas._items_by_id[annotation.id]
+        text_items = [
+            child for child in box.childItems() if hasattr(child, "text")
+        ]
+        self.assertEqual(len(text_items), 1)
+        self.assertEqual(text_items[0].text(), "car  0.91")
+        self.assertEqual(text_items[0].acceptedMouseButtons(), Qt.NoButton)
 
     def test_canvas_has_explicit_zoom_fit_and_actual_size_controls(self):
         window = self.make_window()
@@ -134,7 +223,7 @@ class GuiUiAuditTests(unittest.TestCase):
         QCoreApplication.processEvents()
         self.assertTrue(window.canvas._auto_fit)
 
-    def test_space_temporarily_enables_hand_pan(self):
+    def test_space_temporarily_enables_hand_pan_from_select_mode(self):
         window = self.make_window()
         self.load_canvas(window)
         press = QKeyEvent(QEvent.KeyPress, Qt.Key_Space, Qt.NoModifier)
