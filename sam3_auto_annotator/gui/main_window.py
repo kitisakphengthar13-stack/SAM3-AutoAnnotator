@@ -2,14 +2,26 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QStatusBar
+from PySide6.QtWidgets import (
+    QDialog,
+    QDockWidget,
+    QFileDialog,
+    QMainWindow,
+    QMessageBox,
+    QStatusBar,
+    QVBoxLayout,
+)
 
 from sam3_auto_annotator.gui.actions import AppActions
 from sam3_auto_annotator.gui.theme import APP_STYLESHEET
+from sam3_auto_annotator.gui.views.annotation_panel import AnnotationPanel
+from sam3_auto_annotator.gui.views.dataset_panel import DatasetPanel
 from sam3_auto_annotator.gui.views.main_toolbar import CommandBar, build_menus
-from sam3_auto_annotator.gui.views.workspace import AnnotationWorkspace
+from sam3_auto_annotator.gui.views.results_panel import ResultsPanel
+from sam3_auto_annotator.gui.views.setup_panel import SetupPanel
+from sam3_auto_annotator.gui.views.workspace import CanvasWorkspace
 from sam3_auto_annotator.gui.widgets.elided_label import ElidedLabel
 
 
@@ -17,7 +29,7 @@ IMAGE_FILTER = "Images (*.jpg *.jpeg *.png *.bmp *.tif *.tiff *.webp)"
 
 
 class MainWindow(QMainWindow):
-    """Qt shell and user interaction surface; workflow lives in AppController."""
+    """Canvas-first desktop shell; workflow coordination lives in AppController."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -28,58 +40,111 @@ class MainWindow(QMainWindow):
         self.controller = None
         self.ui_settings = None
         self.diagnostic_log_path = None
+        self._focus_previous_visibility = (True, True)
 
         self.actions = AppActions(self)
         self.exit_action = build_menus(self, self.actions)
         self.command_bar = CommandBar(self.actions, self)
         self.addToolBar(self.command_bar)
 
-        self.workspace = AnnotationWorkspace(self.actions, self)
-        self.setCentralWidget(self.workspace)
+        self.canvas_area = CanvasWorkspace(self.actions, self)
+        self.setCentralWidget(self.canvas_area)
+
+        self.dataset = DatasetPanel(self.actions)
+        self.dataset_dock = self._dock(
+            "Dataset", "datasetDock", self.dataset, Qt.LeftDockWidgetArea
+        )
+        self.dataset_dock.setMinimumWidth(190)
+
+        self.annotation = AnnotationPanel(self.actions)
+        self.annotation_dock = self._dock(
+            "Objects", "objectsDock", self.annotation, Qt.RightDockWidgetArea
+        )
+        self.annotation_dock.setMinimumWidth(280)
+
+        self.setup = SetupPanel(self.actions)
+        self.setup_dialog = self._dialog("Project Setup", self.setup, 430, 650)
+        self.results = ResultsPanel(self.actions)
+        self.results_dialog = self._dialog("Export", self.results, 500, 680)
+
+        self.actions.focus_workspace.toggled.connect(self.set_focus_workspace)
+        self.actions.fullscreen.toggled.connect(self.set_fullscreen)
 
         self.setStatusBar(QStatusBar(self))
         self.status_context = ElidedLabel("No image | 0 annotations | saved")
         self.status_context.setObjectName("mutedLabel")
         self.status_context.setMinimumWidth(210)
-        self.status_context.setMaximumWidth(340)
+        self.status_context.setMaximumWidth(420)
         self.statusBar().addPermanentWidget(self.status_context, 1)
         self.set_message("Open an image or folder to begin.")
         self.setStyleSheet(APP_STYLESHEET)
 
-    @property
-    def dataset(self):
-        return self.workspace.dataset
+    def _dock(self, title, object_name, widget, area):
+        dock = QDockWidget(title, self)
+        dock.setObjectName(object_name)
+        dock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
+        dock.setFeatures(
+            QDockWidget.DockWidgetClosable
+            | QDockWidget.DockWidgetMovable
+            | QDockWidget.DockWidgetFloatable
+        )
+        dock.setWidget(widget)
+        self.addDockWidget(area, dock)
+        return dock
 
-    @property
-    def canvas_area(self):
-        return self.workspace.canvas_area
+    def _dialog(self, title, widget, width, height):
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setModal(False)
+        dialog.resize(width, height)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(widget)
+        return dialog
 
     @property
     def canvas(self):
-        return self.workspace.canvas_area.canvas
-
-    @property
-    def setup(self):
-        return self.workspace.inspector.setup
-
-    @property
-    def annotation(self):
-        return self.workspace.inspector.annotation
-
-    @property
-    def results(self):
-        return self.workspace.inspector.results
-
-    @property
-    def inspector(self):
-        return self.workspace.inspector
+        return self.canvas_area.canvas
 
     @property
     def task_progress(self):
-        return self.workspace.canvas_area.task_progress
+        return self.canvas_area.task_progress
 
     def set_controller(self, controller):
         self.controller = controller
+
+    def show_setup(self):
+        self.setup_dialog.show()
+        self.setup_dialog.raise_()
+        self.setup_dialog.activateWindow()
+
+    def show_review(self):
+        self.annotation_dock.show()
+        self.annotation_dock.raise_()
+
+    def show_results(self):
+        self.results_dialog.show()
+        self.results_dialog.raise_()
+        self.results_dialog.activateWindow()
+
+    def set_focus_workspace(self, enabled):
+        if enabled:
+            self._focus_previous_visibility = (
+                self.dataset_dock.isVisible(),
+                self.annotation_dock.isVisible(),
+            )
+            self.dataset_dock.hide()
+            self.annotation_dock.hide()
+            return
+        dataset_visible, annotation_visible = self._focus_previous_visibility
+        self.dataset_dock.setVisible(dataset_visible)
+        self.annotation_dock.setVisible(annotation_visible)
+
+    def set_fullscreen(self, enabled):
+        if enabled:
+            self.showFullScreen()
+        else:
+            self.showNormal()
 
     def set_message(self, message, timeout=0):
         self.statusBar().showMessage(str(message), int(timeout))
