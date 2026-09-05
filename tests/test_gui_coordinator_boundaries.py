@@ -64,6 +64,8 @@ class GuiCoordinatorBoundaryTests(unittest.TestCase):
         annotation_source = inspect.getsource(AnnotationController)
         self.assertIn("capture_edit", history_source)
         self.assertIn("commit_edit", history_source)
+        self.assertIn("AnnotationStateSnapshot.capture", history_source)
+        self.assertNotIn(".to_dict()", history_source)
         self.assertNotIn("QTimer", history_source)
         self.assertNotIn("_pending_capture", history_source)
         self.assertNotIn("begin_edit", history_source)
