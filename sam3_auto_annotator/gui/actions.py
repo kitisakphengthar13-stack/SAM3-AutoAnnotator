@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtCore import QObject
+from PySide6.QtGui import QAction, QKeySequence
 
 from sam3_auto_annotator.gui.icons import ICONS, icon
 
@@ -50,11 +50,32 @@ class AppActions(QObject):
         )
         self.export = self._action(
             "Export Labels", "export", "Ctrl+E",
-            "Save corrected CSV and YOLO labels.", role="export",
+            "Review export readiness and write corrected labels.", role="export",
         )
         self.fit = self._action(
             "Fit", "fit", "F",
             "Fit the current image inside the canvas.",
+        )
+        self.zoom_in = self._action(
+            "Zoom In", "zoom_in", "Ctrl++",
+            "Zoom into the image.",
+        )
+        self.zoom_out = self._action(
+            "Zoom Out", "zoom_out", "Ctrl+-",
+            "Zoom out of the image.",
+        )
+        self.actual_size = self._action(
+            "100%", "actual_size", "Ctrl+0",
+            "Show one image pixel per screen pixel.",
+        )
+        self.focus_workspace = self._action(
+            "Focus Workspace", "fullscreen", "Tab",
+            "Hide or restore side panels so the canvas gets maximum space.",
+            checkable=True,
+        )
+        self.fullscreen = self._action(
+            "Fullscreen", "fullscreen", "F11",
+            "Toggle fullscreen application mode.", checkable=True,
         )
         self.previous_image = self._action(
             "Previous Image", "previous", "Alt+Left",
@@ -81,8 +102,8 @@ class AppActions(QObject):
             "Restore the original SAM3 annotation.",
         )
         self.mark_reviewed = self._action(
-            "Mark Image Reviewed", "reviewed", "R",
-            "Mark the selected image as reviewed.",
+            "Review & Next", "reviewed", "R",
+            "Mark the selected image reviewed and advance when possible.",
         )
         self.save_preview = self._action(
             "Save Preview", "preview", None,
@@ -111,12 +132,7 @@ class AppActions(QObject):
         role=None,
         checkable=False,
     ):
-        color = {
-            "primary": "#2563eb",
-            "danger": "#dc2626",
-            "export": "#2563eb",
-        }.get(role, "#334155")
-        action = QAction(icon(ICONS[icon_key], color, scale_factor=0.82), text, self)
+        action = QAction(icon(ICONS[icon_key]), text, self)
         action.setCheckable(checkable)
         action.setToolTip(tooltip)
         action.setStatusTip(tooltip)
@@ -137,6 +153,9 @@ class AppActions(QObject):
             self.delete_annotation,
             self.export,
             self.fit,
+            self.zoom_in,
+            self.zoom_out,
+            self.actual_size,
             self.previous_image,
             self.next_image,
             self.apply_class,
