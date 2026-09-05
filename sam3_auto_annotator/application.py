@@ -7,7 +7,7 @@ import traceback
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from sam3_auto_annotator import __version__
-from sam3_auto_annotator.gui.controller import AppController
+from sam3_auto_annotator.gui.controllers import WorkstationController
 from sam3_auto_annotator.gui.icons import ICONS, icon
 from sam3_auto_annotator.gui.main_window import MainWindow
 from sam3_auto_annotator.gui.settings import UiSettings
@@ -35,7 +35,7 @@ def create_application(argv=None):
 
     settings = UiSettings()
     window = MainWindow()
-    AppController(window, settings)
+    WorkstationController(window, settings)
     window.ui_settings = settings
     settings.restore_window(window, window.workspace)
     window.diagnostic_log_path = log_path
