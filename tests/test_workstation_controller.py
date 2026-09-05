@@ -1,3 +1,4 @@
+import inspect
 import os
 import tempfile
 import unittest
@@ -61,6 +62,16 @@ class WorkstationControllerTests(unittest.TestCase):
         self.assertIsInstance(self.controller.inference, InferenceController)
         self.assertIsInstance(self.controller.exports, ExportController)
 
+    def test_active_use_case_controllers_do_not_reference_retired_inspector(self):
+        for controller_type in (
+            ProjectController,
+            AnnotationController,
+            InferenceController,
+            ExportController,
+        ):
+            with self.subTest(controller=controller_type.__name__):
+                self.assertNotIn("inspector", inspect.getsource(controller_type))
+
     def test_export_methods_route_through_extracted_controller(self):
         calls = []
         self.controller.exports.export_labels = lambda: calls.append("export")
@@ -80,6 +91,16 @@ class WorkstationControllerTests(unittest.TestCase):
             calls,
             ["export", ("preview", True), "open-preview", "open-output"],
         )
+
+    def test_project_activation_does_not_open_setup_dialog(self):
+        self.assertFalse(self.window.setup_dialog.isVisible())
+        project = create_project(self._image(), ["car"], half=False)
+
+        self.controller._load_project(project)
+        QCoreApplication.processEvents()
+
+        self.assertFalse(self.window.setup_dialog.isVisible())
+        self.assertIs(self.controller.project, project)
 
     def test_manual_box_uses_visible_active_class_not_selected_object_editor(self):
         project = create_project(self._image(), ["car", "truck"], half=False)
