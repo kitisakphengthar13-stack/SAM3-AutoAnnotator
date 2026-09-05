@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from domain import ImageStatus
 from gui.rendering.annotation_preview import (
     OverlayOptions,
     render_annotation_preview,
@@ -37,19 +36,6 @@ class ExportController:
                 "Restore every class in use, then retry.",
                 exc,
             )
-            return
-
-        incomplete = [
-            image
-            for image in host.project.images
-            if image.status in {ImageStatus.NOT_PREDICTED, ImageStatus.ERROR}
-        ]
-        if incomplete and not host.view.confirm(
-            "Incomplete Images",
-            f"{len(incomplete)} image(s) are unpredicted or failed. "
-            "They will receive empty YOLO label files unless they contain manual boxes.",
-            confirm_text="Export Anyway",
-        ):
             return
 
         try:
