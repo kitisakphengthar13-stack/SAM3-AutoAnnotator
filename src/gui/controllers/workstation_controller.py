@@ -13,7 +13,7 @@ from services.prediction_service import PredictionService
 
 
 class WorkstationController(QObject):
-    """Compose focused workstation controllers and shared application state."""
+    """Compose focused controllers and own shared workstation state."""
 
     def __init__(
         self,
@@ -146,61 +146,22 @@ class WorkstationController(QObject):
         annotation = image.annotation_by_id(self.selected_annotation_id)
         return annotation if annotation is not None and annotation.is_active else None
 
-    # Temporary compatibility methods for callers that have not yet moved to
-    # the focused controllers. Active signal routing above does not use them.
-    def _last_directory(self):
-        return self.projects.last_directory()
-
-    def _remember_path(self, path):
-        return self.projects.remember_path(path)
-
-    def _can_replace_project(self):
-        return self.projects.can_replace_project()
-
+    # Public façade kept for external/test callers while active runtime signals
+    # route directly to the focused controller that owns each use case.
     def open_image(self):
         return self.projects.open_image()
 
     def open_folder(self):
         return self.projects.open_folder()
 
-    def _create_project(self, input_path):
-        return self.projects.create_project(input_path)
-
     def open_project(self):
         return self.projects.open_project()
-
-    def _load_project(self, project, state_path=None):
-        return self.projects.load_project(project, state_path)
 
     def import_yolo(self):
         return self.projects.import_yolo()
 
-    def browse_model(self):
-        return self.projects.browse_model()
-
-    def browse_output(self):
-        return self.projects.browse_output()
-
-    def settings_changed(self):
-        return self.projects.settings_changed()
-
-    def _prompt_validation_error(self, prompts):
-        return self.projects.prompt_validation_error(prompts)
-
-    def _apply_settings_if_valid(self, prompts, *, prompts_valid=None):
-        return self.projects.apply_settings_if_valid(
-            prompts,
-            prompts_valid=prompts_valid,
-        )
-
-    def _sync_project_settings(self, require_prompts=False):
-        return self.projects.sync_project_settings(require_prompts=require_prompts)
-
     def save_project(self):
         return self.projects.save_project()
-
-    def _show_initial_state(self):
-        return self.presentation.show_initial_state()
 
     def select_image(self, image_index):
         return self.presentation.select_image(image_index)
@@ -211,20 +172,8 @@ class WorkstationController(QObject):
     def load_current_image(self):
         return self.presentation.load_current_image()
 
-    def _render_current_annotations(self, select_id=None):
-        return self.annotations.render_current_annotations(select_id)
-
     def select_annotation(self, annotation_id):
         return self.annotations.select_annotation(annotation_id)
-
-    def _clear_annotation_selection(self):
-        return self.annotations.clear_selection()
-
-    def toggle_draw_mode(self, checked):
-        return self.annotations.toggle_draw_mode(checked)
-
-    def _update_canvas_hint(self):
-        return self.annotations.update_canvas_hint()
 
     def update_overlays(self):
         return self.annotations.update_overlays()
@@ -250,12 +199,6 @@ class WorkstationController(QObject):
     def mark_current_reviewed(self):
         return self.annotations.mark_current_reviewed()
 
-    def _after_annotation_change(self, select_id=None):
-        return self.annotations.after_annotation_change(select_id)
-
-    def _inference_settings(self):
-        return self.inference.settings()
-
     def run_current(self):
         return self.inference.run_current()
 
@@ -265,56 +208,8 @@ class WorkstationController(QObject):
     def resegment_selected(self):
         return self.inference.resegment_selected()
 
-    def _start_task(self, mode):
-        return self.inference.start_task(mode)
-
-    def _finish_start_failure(self, exc):
-        return self.inference.finish_start_failure(exc)
-
     def cancel_task(self):
         return self.inference.cancel_task()
-
-    def task_status(self, message):
-        return self.inference.task_status(message)
-
-    def task_started(self, kind):
-        return self.inference.task_started(kind)
-
-    def batch_progress(self, current, total, image_path):
-        return self.inference.batch_progress(current, total, image_path)
-
-    def prediction_ready(self, image_index, prediction):
-        return self.inference.prediction_ready(image_index, prediction)
-
-    def prediction_failed(self, image_index, message):
-        return self.inference.prediction_failed(image_index, message)
-
-    def segmentation_ready(self, image_index, annotation_id, result):
-        return self.inference.segmentation_ready(image_index, annotation_id, result)
-
-    def segmentation_failed(self, image_index, annotation_id, message):
-        return self.inference.segmentation_failed(image_index, annotation_id, message)
-
-    def batch_image_ready(self, image_index, prediction):
-        return self.inference.batch_image_ready(image_index, prediction)
-
-    def batch_image_failed(self, image_index, message):
-        return self.inference.batch_image_failed(image_index, message)
-
-    def batch_completed(self, summary):
-        return self.inference.batch_completed(summary)
-
-    def batch_cancelled(self, summary):
-        return self.inference.batch_cancelled(summary)
-
-    def task_failed(self, message):
-        return self.inference.task_failed(message)
-
-    def _prediction_error(self, message, exc=None):
-        return self.inference.prediction_error(message, exc)
-
-    def task_finished(self, kind):
-        return self.inference.task_finished(kind)
 
     def export_labels(self):
         return self.exports.export_labels()
@@ -327,31 +222,6 @@ class WorkstationController(QObject):
 
     def open_output(self):
         return self.exports.open_output()
-
-    def _output_dir(self):
-        return self.exports.output_dir()
-
-    def _mark_dirty(self, *, refresh=True):
-        return self.presentation.mark_dirty(refresh=refresh)
-
-    @staticmethod
-    def _box_fields_changed(annotation, values):
-        return PresentationController.box_fields_changed(annotation, values)
-
-    def _box_editor_changed(self, annotation):
-        return self.presentation.box_editor_changed(annotation)
-
-    def _update_actions(self):
-        return self.presentation.update_actions()
-
-    def _set_detail_fields_enabled(self, enabled):
-        return self.presentation.set_detail_fields_enabled(enabled)
-
-    def _update_context(self):
-        return self.presentation.update_context()
-
-    def _report_error(self, title, message, next_action, exc):
-        return self.presentation.report_error(title, message, next_action, exc)
 
     def handle_close_event(self, event):
         if self.tasks.is_running:
