@@ -146,32 +146,6 @@ class WorkstationController(QObject):
         annotation = image.annotation_by_id(self.selected_annotation_id)
         return annotation if annotation is not None and annotation.is_active else None
 
-    # Remaining compatibility surface used only by the legacy GUI field tests.
-    # Runtime signals above do not route through these methods.
-    def open_image(self):
-        return self.projects.open_image()
-
-    def load_current_image(self):
-        return self.presentation.load_current_image()
-
-    def select_annotation(self, annotation_id):
-        return self.annotations.select_annotation(annotation_id)
-
-    def canvas_box_changed(self, annotation_id, box_xyxy):
-        return self.annotations.canvas_box_changed(annotation_id, box_xyxy)
-
-    def apply_box_fields(self):
-        return self.annotations.apply_box_fields()
-
-    def apply_selected_class(self):
-        return self.annotations.apply_selected_class()
-
-    def run_current(self):
-        return self.inference.run_current()
-
-    def resegment_selected(self):
-        return self.inference.resegment_selected()
-
     def handle_close_event(self, event):
         if self.tasks.is_running:
             self._close_pending = True
