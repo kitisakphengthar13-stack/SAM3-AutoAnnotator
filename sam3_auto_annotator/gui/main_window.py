@@ -21,7 +21,6 @@ from sam3_auto_annotator.gui.coordinators import (
     ExportDialogCoordinator,
     SetupDialogCoordinator,
 )
-from sam3_auto_annotator.gui.coordinators.surface_compat import ControllerSurfaceAdapter
 from sam3_auto_annotator.gui.theme import APP_STYLESHEET
 from sam3_auto_annotator.gui.views.annotation_panel import AnnotationPanel
 from sam3_auto_annotator.gui.views.dataset_panel import DatasetPanel
@@ -88,16 +87,11 @@ class MainWindow(QMainWindow):
         self.results_dialog = self._dialog("Export", self.results, 500, 680)
         self.results_dialog.setWindowModality(Qt.WindowModal)
 
-        # Cross-view review follow-up and edit-history policy stay outside
-        # the window shell.
         self.annotation_interaction = AnnotationInteractionCoordinator(self)
         self.history = AnnotationHistoryCoordinator(self)
         self.undo_stack = self.history.stack
         self.setup_flow = SetupDialogCoordinator(self)
         self.export_flow = ExportDialogCoordinator(self)
-
-        # Remove after AppController no longer targets the retired Inspector API.
-        self.inspector = ControllerSurfaceAdapter(self)
 
         self.actions.project_settings.triggered.connect(self.show_setup)
         self.actions.export_dialog.triggered.connect(self.show_export_preflight)
