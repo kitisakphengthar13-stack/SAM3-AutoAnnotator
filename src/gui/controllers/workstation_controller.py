@@ -13,7 +13,7 @@ from services.prediction_service import PredictionService
 
 
 class WorkstationController(QObject):
-    """Application composition root for focused workstation use-case controllers."""
+    """Compose focused workstation controllers and shared application state."""
 
     def __init__(
         self,
@@ -57,73 +57,77 @@ class WorkstationController(QObject):
         self._connect_actions()
         self._connect_views()
         self._connect_tasks()
-        self._show_initial_state()
+        self.presentation.show_initial_state()
 
     def _connect_actions(self):
         actions = self.view.actions
         connections = {
-            actions.open_image: self.open_image,
-            actions.open_folder: self.open_folder,
-            actions.open_state: self.open_project,
-            actions.import_yolo: self.import_yolo,
-            actions.save: self.save_project,
-            actions.run_current: self.run_current,
-            actions.run_remaining: self.run_remaining,
-            actions.delete_annotation: self.delete_selected,
-            actions.export: self.export_labels,
+            actions.open_image: self.projects.open_image,
+            actions.open_folder: self.projects.open_folder,
+            actions.open_state: self.projects.open_project,
+            actions.import_yolo: self.projects.import_yolo,
+            actions.save: self.projects.save_project,
+            actions.run_current: self.inference.run_current,
+            actions.run_remaining: self.inference.run_remaining,
+            actions.delete_annotation: self.annotations.delete_selected,
+            actions.export: self.exports.export_labels,
             actions.previous_image: lambda: self.view.dataset.select_relative(-1),
             actions.next_image: lambda: self.view.dataset.select_relative(1),
-            actions.apply_class: self.apply_selected_class,
-            actions.apply_box: self.apply_box_fields,
-            actions.resegment: self.resegment_selected,
-            actions.reset_sam3: self.reset_selected,
-            actions.mark_reviewed: self.mark_current_reviewed,
-            actions.save_preview: self.save_preview,
-            actions.open_preview: self.open_preview,
-            actions.open_output: self.open_output,
-            actions.cancel_batch: self.cancel_task,
+            actions.apply_class: self.annotations.apply_selected_class,
+            actions.apply_box: self.annotations.apply_box_fields,
+            actions.resegment: self.inference.resegment_selected,
+            actions.reset_sam3: self.annotations.reset_selected,
+            actions.mark_reviewed: self.annotations.review_current_and_select_next,
+            actions.save_preview: self.exports.save_preview,
+            actions.open_preview: self.exports.open_preview,
+            actions.open_output: self.exports.open_output,
+            actions.cancel_batch: self.inference.cancel_task,
         }
         for action, callback in connections.items():
             action.triggered.connect(lambda _checked=False, fn=callback: fn())
-        actions.draw_box.toggled.connect(self.toggle_draw_mode)
+        actions.draw_box.toggled.connect(self.annotations.toggle_draw_mode)
 
     def _connect_views(self):
-        self.view.dataset.image_selected.connect(self.select_image)
-        self.view.dataset.filter_changed.connect(self.dataset_filter_changed)
-        self.view.canvas_area.empty_state.open_image_requested.connect(self.open_image)
-        self.view.canvas_area.empty_state.open_folder_requested.connect(self.open_folder)
-        self.view.canvas_area.image_load_error.retry_requested.connect(
-            self.load_current_image
+        self.view.dataset.image_selected.connect(self.presentation.select_image)
+        self.view.dataset.filter_changed.connect(self.presentation.dataset_filter_changed)
+        self.view.canvas_area.empty_state.open_image_requested.connect(
+            self.projects.open_image
         )
-        self.view.canvas.box_drawn.connect(self.add_manual_box)
-        self.view.canvas.annotation_selected.connect(self.select_annotation)
-        self.view.canvas.annotation_changed.connect(self.canvas_box_changed)
-        self.view.annotation.annotation_selected.connect(self.select_annotation)
-        self.view.annotation.editing_changed.connect(self._update_actions)
-        self.view.setup.browse_model_requested.connect(self.browse_model)
-        self.view.setup.browse_output_requested.connect(self.browse_output)
-        self.view.setup.settings_changed.connect(self.settings_changed)
+        self.view.canvas_area.empty_state.open_folder_requested.connect(
+            self.projects.open_folder
+        )
+        self.view.canvas_area.image_load_error.retry_requested.connect(
+            self.presentation.load_current_image
+        )
+        self.view.canvas.box_drawn.connect(self.annotations.add_manual_box)
+        self.view.canvas.annotation_selected.connect(self.annotations.select_annotation)
+        self.view.canvas.annotation_changed.connect(self.annotations.canvas_box_changed)
+        self.view.annotation.annotation_selected.connect(self.annotations.select_annotation)
+        self.view.annotation.editing_changed.connect(self.presentation.update_actions)
+        self.view.setup.browse_model_requested.connect(self.projects.browse_model)
+        self.view.setup.browse_output_requested.connect(self.projects.browse_output)
+        self.view.setup.settings_changed.connect(self.projects.settings_changed)
         for checkbox in (
             self.view.canvas_area.show_boxes_check,
             self.view.canvas_area.show_masks_check,
             self.view.canvas_area.show_polygons_check,
         ):
-            checkbox.toggled.connect(self.update_overlays)
+            checkbox.toggled.connect(self.annotations.update_overlays)
 
     def _connect_tasks(self):
-        self.tasks.task_started.connect(self.task_started)
-        self.tasks.status.connect(self.task_status)
-        self.tasks.progress.connect(self.batch_progress)
-        self.tasks.prediction_ready.connect(self.prediction_ready)
-        self.tasks.prediction_failed.connect(self.prediction_failed)
-        self.tasks.segmentation_ready.connect(self.segmentation_ready)
-        self.tasks.segmentation_failed.connect(self.segmentation_failed)
-        self.tasks.batch_image_ready.connect(self.batch_image_ready)
-        self.tasks.batch_image_failed.connect(self.batch_image_failed)
-        self.tasks.batch_completed.connect(self.batch_completed)
-        self.tasks.batch_cancelled.connect(self.batch_cancelled)
-        self.tasks.task_failed.connect(self.task_failed)
-        self.tasks.task_finished.connect(self.task_finished)
+        self.tasks.task_started.connect(self.inference.task_started)
+        self.tasks.status.connect(self.inference.task_status)
+        self.tasks.progress.connect(self.inference.batch_progress)
+        self.tasks.prediction_ready.connect(self.inference.prediction_ready)
+        self.tasks.prediction_failed.connect(self.inference.prediction_failed)
+        self.tasks.segmentation_ready.connect(self.inference.segmentation_ready)
+        self.tasks.segmentation_failed.connect(self.inference.segmentation_failed)
+        self.tasks.batch_image_ready.connect(self.inference.batch_image_ready)
+        self.tasks.batch_image_failed.connect(self.inference.batch_image_failed)
+        self.tasks.batch_completed.connect(self.inference.batch_completed)
+        self.tasks.batch_cancelled.connect(self.inference.batch_cancelled)
+        self.tasks.task_failed.connect(self.inference.task_failed)
+        self.tasks.task_finished.connect(self.inference.task_finished)
 
     @property
     def current_image(self):
@@ -142,7 +146,8 @@ class WorkstationController(QObject):
         annotation = image.annotation_by_id(self.selected_annotation_id)
         return annotation if annotation is not None and annotation.is_active else None
 
-    # Project -------------------------------------------------------------
+    # Temporary compatibility methods for callers that have not yet moved to
+    # the focused controllers. Active signal routing above does not use them.
     def _last_directory(self):
         return self.projects.last_directory()
 
@@ -194,7 +199,6 @@ class WorkstationController(QObject):
     def save_project(self):
         return self.projects.save_project()
 
-    # Dataset/image presentation -----------------------------------------
     def _show_initial_state(self):
         return self.presentation.show_initial_state()
 
@@ -207,7 +211,6 @@ class WorkstationController(QObject):
     def load_current_image(self):
         return self.presentation.load_current_image()
 
-    # Annotation ----------------------------------------------------------
     def _render_current_annotations(self, select_id=None):
         return self.annotations.render_current_annotations(select_id)
 
@@ -250,7 +253,6 @@ class WorkstationController(QObject):
     def _after_annotation_change(self, select_id=None):
         return self.annotations.after_annotation_change(select_id)
 
-    # Inference -----------------------------------------------------------
     def _inference_settings(self):
         return self.inference.settings()
 
@@ -314,7 +316,6 @@ class WorkstationController(QObject):
     def task_finished(self, kind):
         return self.inference.task_finished(kind)
 
-    # Export --------------------------------------------------------------
     def export_labels(self):
         return self.exports.export_labels()
 
@@ -330,7 +331,6 @@ class WorkstationController(QObject):
     def _output_dir(self):
         return self.exports.output_dir()
 
-    # Presentation helpers ------------------------------------------------
     def _mark_dirty(self, *, refresh=True):
         return self.presentation.mark_dirty(refresh=refresh)
 
@@ -365,7 +365,7 @@ class WorkstationController(QObject):
         if self.dirty:
             decision = self.view.ask_unsaved_changes()
             if decision == "save":
-                self.save_project()
+                self.projects.save_project()
                 if self.dirty:
                     event.ignore()
                     return
