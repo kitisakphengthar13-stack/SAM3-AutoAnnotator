@@ -2,9 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sam3_auto_annotator.services.export_rows import build_box_rows
-from sam3_auto_annotator.core import Annotation, AnnotationSource, ImageRecord, ImageStatus, ProjectState
-from sam3_auto_annotator.storage.yolo_importer import (
+from services.export_rows import build_box_rows
+from domain import Annotation, AnnotationSource, ImageRecord, ImageStatus, ProjectState
+from storage.yolo_importer import (
     annotations_from_yolo_file,
     class_name_for_id,
     import_yolo_detection_labels,

@@ -7,7 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import QApplication
 
-from sam3_auto_annotator.gui.main_window import MainWindow
+from gui.main_window import MainWindow
 
 
 class SetupDialogTests(unittest.TestCase):

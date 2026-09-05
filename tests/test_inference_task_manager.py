@@ -5,12 +5,12 @@ from pathlib import Path
 from PySide6.QtCore import QCoreApplication, QEvent, QEventLoop, QThread, QTimer
 from PySide6.QtTest import QSignalSpy
 
-from sam3_auto_annotator.core import ImageRecord
-from sam3_auto_annotator.gui.tasks.inference_task_manager import (
+from domain import ImageRecord
+from gui.tasks.inference_task_manager import (
     InferenceTaskManager,
     TaskKind,
 )
-from sam3_auto_annotator.services.prediction_service import ImagePrediction
+from services.prediction_service import ImagePrediction
 
 
 def wait_for_signal(spy, timeout=3000):

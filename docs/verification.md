@@ -37,7 +37,7 @@ Recorded environment/checks:
 - Pillow 12.3.0;
 - Linux EGL runtime for Qt offscreen execution;
 - production `requirements.txt` dependency resolution with `pip --dry-run` passed;
-- `python -m compileall -q main.py sam3_auto_annotator tests` passed;
+- `python -m compileall -q src tests` passed;
 - `python -m unittest discover -s tests -v` ran **129 tests**;
 - result: **129 passed, 0 failures, 0 errors**.
 
@@ -77,7 +77,7 @@ From the repository root:
 ```powershell
 .\.venv\Scripts\python.exe --version
 .\.venv\Scripts\python.exe -m pip check
-.\.venv\Scripts\python.exe -m compileall -q main.py sam3_auto_annotator tests
+.\.venv\Scripts\python.exe -m compileall -q src tests
 $env:QT_QPA_PLATFORM = "offscreen"
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 Remove-Item Env:QT_QPA_PLATFORM -ErrorAction SilentlyContinue
@@ -91,12 +91,12 @@ Python/PySide6/GPU environment.
 Run:
 
 ```powershell
-.\.venv\Scripts\python.exe main.py
+.\.venv\Scripts\python.exe src/main.py
 ```
 
 Check at minimum:
 
-1. Open `images_test`; Dataset is docked left, Objects right, canvas central.
+1. Open `tests/fixtures/images`; Dataset is docked left, Objects right, canvas central.
 2. Close/move/float docks and restore them from View; restart and verify saved
    `QMainWindow` state.
 3. Toggle Focus Workspace without losing image or selection.

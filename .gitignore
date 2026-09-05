@@ -39,8 +39,7 @@ Thumbs.db
 desktop.ini
 
 # Project outputs
-outputs/*
-!outputs/.gitkeep
+/outputs/
 preview_results/
 yolo_labels/
 annotation_state.json

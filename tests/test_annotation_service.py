@@ -1,12 +1,12 @@
 import unittest
 
-from sam3_auto_annotator.core import (
+from domain import (
     Annotation,
     AnnotationSource,
     ImageRecord,
     ImageStatus,
 )
-from sam3_auto_annotator.services.annotation_service import (
+from services.annotation_service import (
     add_manual_annotation,
     apply_box_segmentation,
     change_annotation_class,

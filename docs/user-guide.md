@@ -5,7 +5,7 @@
 Launch from the repository root:
 
 ```powershell
-.\.venv\Scripts\python.exe main.py
+.\.venv\Scripts\python.exe src/main.py
 ```
 
 The window restores Qt geometry/dock state. Project data is separate and returns

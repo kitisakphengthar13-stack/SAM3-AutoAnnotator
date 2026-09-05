@@ -8,8 +8,8 @@ from PySide6.QtGui import QBrush
 from PySide6.QtTest import QAbstractItemModelTester, QSignalSpy
 from PySide6.QtWidgets import QApplication
 
-from sam3_auto_annotator.core import Annotation, AnnotationSource, ImageRecord, ImageStatus
-from sam3_auto_annotator.gui.models import (
+from domain import Annotation, AnnotationSource, ImageRecord, ImageStatus
+from gui.models import (
     ANNOTATION_COUNT_ROLE,
     ANNOTATION_ID_ROLE,
     CLASS_ID_ROLE,

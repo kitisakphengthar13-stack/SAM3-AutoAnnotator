@@ -3,7 +3,7 @@ import types
 import unittest
 from unittest.mock import patch
 
-from sam3_auto_annotator.sam3.predictor import create_predictor
+from sam3.predictor import create_predictor
 
 
 class PredictorPrecisionTests(unittest.TestCase):

@@ -11,28 +11,28 @@ try:
     from PySide6.QtGui import QColor, QImage
     from PySide6.QtWidgets import QApplication, QGraphicsItem
 
-    from sam3_auto_annotator.core import (
+    from domain import (
         Annotation,
         AnnotationSource,
         ImageStatus,
     )
-    from sam3_auto_annotator.gui.controller import AppController, UiMode
-    from sam3_auto_annotator.gui.icons import ICONS, icon
-    from sam3_auto_annotator.gui.main_window import MainWindow
-    from sam3_auto_annotator.gui.tasks.inference_task_manager import TaskKind
-    from sam3_auto_annotator.gui.widgets.image_canvas import (
+    from gui.controller import AppController, UiMode
+    from gui.icons import ICONS, icon
+    from gui.main_window import MainWindow
+    from gui.tasks.inference_task_manager import TaskKind
+    from gui.widgets.image_canvas import (
         AnnotationRectItem,
         ImageCanvas,
     )
-    from sam3_auto_annotator.gui.widgets.numeric_field import (
+    from gui.widgets.numeric_field import (
         NumericLineEdit,
         configure_c_locale,
     )
-    from sam3_auto_annotator.services.prediction_service import (
+    from services.prediction_service import (
         BoxSegmentation,
         ImagePrediction,
     )
-    from sam3_auto_annotator.services.project_service import parse_prompts
+    from services.project_service import parse_prompts
 except ImportError:  # pragma: no cover - optional GUI dependency
     QApplication = None
 

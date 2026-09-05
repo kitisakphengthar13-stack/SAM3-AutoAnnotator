@@ -10,15 +10,15 @@ from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
-from sam3_auto_annotator.gui.controller import AppController
-from sam3_auto_annotator.gui.controllers import WorkstationController
-from sam3_auto_annotator.gui.controllers.annotation_controller import AnnotationController
-from sam3_auto_annotator.gui.controllers.export_controller import ExportController
-from sam3_auto_annotator.gui.controllers.inference_controller import InferenceController
-from sam3_auto_annotator.gui.controllers.presentation_controller import PresentationController
-from sam3_auto_annotator.gui.controllers.project_controller import ProjectController
-from sam3_auto_annotator.gui.main_window import MainWindow
-from sam3_auto_annotator.services.project_service import create_project
+from gui.controller import AppController
+from gui.controllers import WorkstationController
+from gui.controllers.annotation_controller import AnnotationController
+from gui.controllers.export_controller import ExportController
+from gui.controllers.inference_controller import InferenceController
+from gui.controllers.presentation_controller import PresentationController
+from gui.controllers.project_controller import ProjectController
+from gui.main_window import MainWindow
+from services.project_service import create_project
 
 
 class MemorySettings:

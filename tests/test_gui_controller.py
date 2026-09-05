@@ -6,10 +6,10 @@ from PIL import Image
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication
 
-from sam3_auto_annotator.gui.controllers import UiMode, WorkstationController
-from sam3_auto_annotator.gui.main_window import MainWindow
-from sam3_auto_annotator.services.annotation_service import add_manual_annotation
-from sam3_auto_annotator.services.project_service import create_project
+from gui.controllers import UiMode, WorkstationController
+from gui.main_window import MainWindow
+from services.annotation_service import add_manual_annotation
+from services.project_service import create_project
 
 
 class MemorySettings:

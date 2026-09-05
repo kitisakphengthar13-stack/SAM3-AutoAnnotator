@@ -8,13 +8,13 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from sam3_auto_annotator.core import AnnotationSource, ImageStatus
-from sam3_auto_annotator.services.annotation_service import (
+from domain import AnnotationSource, ImageStatus
+from services.annotation_service import (
     add_manual_annotation,
     edit_annotation_box,
     mark_image_reviewed,
 )
-from sam3_auto_annotator.services.project_service import (
+from services.project_service import (
     create_project,
     ensure_image_sizes,
     export_project,
@@ -27,11 +27,11 @@ from sam3_auto_annotator.services.project_service import (
 class ProjectIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.fixture_dir = Path(__file__).resolve().parents[1] / "images_test"
+        cls.fixture_dir = Path(__file__).resolve().parent / "fixtures" / "images"
         cls.fixture_paths = sorted(cls.fixture_dir.glob("car_*.jpg"))
         if len(cls.fixture_paths) < 3:
             raise unittest.SkipTest(
-                "The backend integration test needs images_test/car_1.jpg through car_3.jpg."
+                "The backend integration test needs tests/fixtures/images/car_1.jpg through car_3.jpg."
             )
 
     def setUp(self):
@@ -153,7 +153,7 @@ class ProjectIntegrationTests(unittest.TestCase):
 
         project.confidence = 0.25
         with patch(
-            "sam3_auto_annotator.storage.project_store.os.replace",
+            "storage.project_store.os.replace",
             side_effect=OSError("simulated replace failure"),
         ):
             with self.assertRaisesRegex(OSError, "simulated replace failure"):

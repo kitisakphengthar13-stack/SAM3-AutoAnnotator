@@ -6,8 +6,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QUndoStack
 
-from sam3_auto_annotator.core import Annotation, AnnotationSource, ImageRecord, ImageStatus
-from sam3_auto_annotator.gui.undo import ImageSnapshotCommand
+from domain import Annotation, AnnotationSource, ImageRecord, ImageStatus
+from gui.undo import ImageSnapshotCommand
 
 
 class ImageSnapshotUndoTests(unittest.TestCase):

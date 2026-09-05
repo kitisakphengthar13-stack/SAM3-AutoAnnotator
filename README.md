@@ -41,7 +41,7 @@ From the repository root in PowerShell:
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe main.py
+.\.venv\Scripts\python.exe src/main.py
 ```
 
 If `.venv` is already prepared, only the final command is needed. Do not run
@@ -137,38 +137,26 @@ train/validation/test splits.
 
 ```text
 SAM3-AutoAnnotator/
-|-- main.py
-|-- requirements.txt
-|-- sam3_auto_annotator/
-|   |-- application.py             # QApplication composition root
+|-- src/
+|   |-- main.py                     # executable composition root
 |   |-- app_paths.py
 |   |-- logging_setup.py
-|   |-- core/                       # pure project/annotation rules
-|   |-- services/                   # project, prediction, edit, export use cases
-|   |-- sam3/                       # Ultralytics adapter/result mapping
-|   |-- storage/                    # image/JSON/CSV/YOLO persistence
-|   `-- gui/
-|       |-- controllers/            # focused workstation use-case controllers
-|       |-- coordinators/           # cross-widget UI transactions
-|       |-- views/
-|       |-- models/
-|       |-- tasks/
-|       `-- widgets/
+|   |-- version.py
+|   |-- domain/                      # project/annotation rules
+|   |-- services/                    # project, prediction, edit, export use cases
+|   |-- sam3/                        # Ultralytics adapter/result mapping
+|   |-- storage/                     # image/JSON/CSV/YOLO persistence
+|   `-- gui/                         # PySide6 workstation
 |-- tests/
+|   `-- fixtures/images/             # small integration fixtures
 |-- docs/
-|-- images_test/
-|-- models/                         # local checkpoints; ignored by Git
-`-- outputs/                        # generated projects; ignored by Git
+|-- requirements.txt
+`-- .gitignore
 ```
 
-`application.py` creates `WorkstationController`. Project, Annotation, Inference,
-Export, and Presentation responsibilities are separated into focused controllers.
-The old monolithic `AppController` implementation and Inspector compatibility
-adapter are retired; `gui/controller.py` remains only as a compatibility import
-alias.
-
-See [Architecture and design](docs/architecture.md) for dependency boundaries and
-[Verification](docs/verification.md) for automated and hardware-dependent checks.
+`src/main.py` is the only executable entrypoint. There is no project-name wrapper
+package and no root forwarding script. Generated `outputs/` and local `models/`
+are runtime directories ignored by Git.
 
 ## Known limitation
 

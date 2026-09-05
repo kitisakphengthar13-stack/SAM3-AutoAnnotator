@@ -12,8 +12,8 @@ from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtGui import QImage, QKeyEvent
 from PySide6.QtWidgets import QApplication, QDockWidget, QGraphicsView
 
-from sam3_auto_annotator.core import Annotation, AnnotationSource, ImageRecord, ImageStatus
-from sam3_auto_annotator.gui.main_window import MainWindow
+from domain import Annotation, AnnotationSource, ImageRecord, ImageStatus
+from gui.main_window import MainWindow
 
 
 class GuiUiAuditTests(unittest.TestCase):

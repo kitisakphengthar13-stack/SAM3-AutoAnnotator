@@ -2,9 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sam3_auto_annotator.core import AnnotationSource
-from sam3_auto_annotator.sam3.predictor_cache import PredictorCache
-from sam3_auto_annotator.services.prediction_service import PredictionService
+from domain import AnnotationSource
+from sam3.predictor_cache import PredictorCache
+from services.prediction_service import PredictionService
 
 
 class FakeBoxes:

@@ -15,20 +15,19 @@ workflow define the persistent workstation.
 ## Top-level boundaries
 
 ```text
-main.py
-sam3_auto_annotator/
-|-- application.py
+src/
+|-- main.py                         # executable composition root
 |-- app_paths.py
 |-- logging_setup.py
-|-- core/
+|-- version.py
+|-- domain/
 |-- services/
 |-- sam3/
 |-- storage/
 `-- gui/
     |-- actions.py
-    |-- controller.py              # compatibility import alias only
-    |-- controllers/               # active application controllers
-    |-- coordinators/              # cross-widget UI transactions
+    |-- controllers/
+    |-- coordinators/
     |-- main_window.py
     |-- settings.py
     |-- theme.py
@@ -40,7 +39,8 @@ sam3_auto_annotator/
     `-- widgets/
 ```
 
-`core`, `services`, `sam3`, and `storage` remain UI-independent.
+`domain`, `services`, `sam3`, and `storage` remain UI-independent. The repository
+has no project-name wrapper package and no forwarding entrypoint.
 
 ## Application controller composition
 
@@ -70,11 +70,7 @@ Responsibilities are explicit:
   context, action enablement policy, and GUI error reporting.
 
 `WorkstationController` does not inherit a monolithic controller and does not
-reimplement these use cases. `gui/controller.py` contains only a temporary import
-alias (`AppController = WorkstationController`) for callers that still import the
-old module path; it contains no legacy controller implementation.
-
-The retired Inspector API and `ControllerSurfaceAdapter` no longer exist.
+reimplement these use cases. The retired Inspector API and `ControllerSurfaceAdapter` no longer exist.
 
 ## Main window and coordinators
 
