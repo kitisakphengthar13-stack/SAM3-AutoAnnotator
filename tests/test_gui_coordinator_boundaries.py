@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication
 
 from gui.controllers.annotation_controller import AnnotationController
 from gui.controllers.export_controller import ExportController
+from gui.controllers.inference_controller import InferenceController
 from gui.coordinators import (
     AnnotationHistoryCoordinator,
     ExportDialogCoordinator,
@@ -57,6 +58,29 @@ class GuiCoordinatorBoundaryTests(unittest.TestCase):
         self.assertIn("review_current_and_select_next", source)
         self.assertNotIn("QTimer", source)
         self.assertNotIn("_advance_after_review", inspect.getsource(MainWindow))
+
+    def test_annotation_history_is_explicit_transaction_not_signal_order_capture(self):
+        history_source = inspect.getsource(AnnotationHistoryCoordinator)
+        annotation_source = inspect.getsource(AnnotationController)
+        self.assertIn("capture_edit", history_source)
+        self.assertIn("commit_edit", history_source)
+        self.assertNotIn("_pending_capture", history_source)
+        self.assertNotIn("begin_edit", history_source)
+        self.assertNotIn("box_drawn.connect", history_source)
+        self.assertNotIn("annotation_changed.connect", history_source)
+        self.assertIn('capture_edit("Add annotation")', annotation_source)
+        self.assertIn('capture_edit("Delete annotation")', annotation_source)
+        self.assertIn("commit_edit", annotation_source)
+
+    def test_inference_boundary_clears_history_from_task_started_not_action_timer(self):
+        history_source = inspect.getsource(AnnotationHistoryCoordinator)
+        inference_source = inspect.getsource(InferenceController)
+        self.assertIn("clear_for_inference_boundary", history_source)
+        self.assertIn("host.view.history.clear_for_inference_boundary()", inference_source)
+        self.assertNotIn("actions.run_current", history_source)
+        self.assertNotIn("actions.run_remaining", history_source)
+        self.assertNotIn("actions.resegment", history_source)
+        self.assertNotIn("clear_if_inference_started", history_source)
 
     def test_setup_transaction_captures_snapshot_synchronously(self):
         source = inspect.getsource(SetupDialogCoordinator)
