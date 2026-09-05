@@ -88,6 +88,7 @@ class WorkCanvas(ImageCanvas):
             )
             label.setBrush(QBrush(QColor("#ffffff")))
             label.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
+            label.setAcceptedMouseButtons(Qt.NoButton)
             label.setPos(2, -19)
             label.setZValue(30)
 
@@ -194,6 +195,7 @@ class CanvasWorkspace(QWidget):
 
         actions.select_tool.toggled.connect(self.canvas.set_select_mode)
         actions.pan_tool.toggled.connect(self.canvas.set_pan_mode)
+        actions.draw_box.toggled.connect(self.canvas.set_draw_mode)
         self.canvas.set_select_mode(True)
 
         self.task_progress = TaskProgressWidget(actions.cancel_batch)
