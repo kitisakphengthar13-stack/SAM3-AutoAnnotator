@@ -180,7 +180,7 @@ class GuiFieldTests(unittest.TestCase):
         window.setup.model_path_edit.setText(str(model_path))
         window.setup.output_dir_edit.setText(str(self.root / "output"))
         window.choose_image = lambda _start_directory="": str(image_path)
-        controller.open_image()
+        controller.projects.open_image()
         QCoreApplication.processEvents()
         self.assertIsNotNone(controller.project)
         self.assertIsNotNone(controller.current_image)
@@ -249,7 +249,7 @@ class GuiFieldTests(unittest.TestCase):
         )
         self.open_image_project(window, controller, prompts=())
 
-        controller.run_current()
+        controller.inference.run_current()
 
         self.assertEqual(tasks.prediction_calls, [])
         self.assertEqual(controller.mode, UiMode.READY)
@@ -372,10 +372,10 @@ class GuiFieldTests(unittest.TestCase):
             polygon_xyn=[[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]],
         )
         image.replace_sam3_drafts([annotation])
-        controller.load_current_image()
-        controller.select_annotation(annotation.id)
+        controller.presentation.load_current_image()
+        controller.annotations.select_annotation(annotation.id)
 
-        controller.canvas_box_changed(annotation.id, (12, 12, 42, 42))
+        controller.annotations.canvas_box_changed(annotation.id, (12, 12, 42, 42))
 
         self.assertFalse(annotation.segmentation_valid)
         self.assertEqual(self.model_text(window.annotation, annotation.id, 2), "stale")
@@ -397,11 +397,11 @@ class GuiFieldTests(unittest.TestCase):
             polygon_xyn=[[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]],
         )
         image.replace_sam3_drafts([annotation])
-        controller.load_current_image()
-        controller.select_annotation(annotation.id)
+        controller.presentation.load_current_image()
+        controller.annotations.select_annotation(annotation.id)
         window.annotation.class_combo.setCurrentText("truck")
 
-        controller.apply_selected_class()
+        controller.annotations.apply_selected_class()
 
         self.assertEqual((annotation.class_id, annotation.class_name), (1, "truck"))
         self.assertFalse(annotation.segmentation_valid)
@@ -421,7 +421,7 @@ class GuiFieldTests(unittest.TestCase):
             model_path=model_path,
         )
 
-        controller.run_current()
+        controller.inference.run_current()
 
         self.assertEqual(len(tasks.prediction_calls), 1)
         image_index, settings = tasks.prediction_calls[0]
@@ -468,7 +468,7 @@ class GuiFieldTests(unittest.TestCase):
             controller,
             model_path=model_path,
         )
-        controller.run_current()
+        controller.inference.run_current()
 
         tasks.prediction_failed.emit(image.image_index, "synthetic out of memory")
         tasks.finish()
@@ -503,8 +503,8 @@ class GuiFieldTests(unittest.TestCase):
             polygon_xyn=[[0.1, 0.1], [0.4, 0.1], [0.4, 0.4]],
         )
         image.replace_sam3_drafts([annotation])
-        controller.load_current_image()
-        controller.select_annotation(annotation.id)
+        controller.presentation.load_current_image()
+        controller.annotations.select_annotation(annotation.id)
         for field, value in zip(
             (
                 window.annotation.x1_edit,
@@ -516,8 +516,8 @@ class GuiFieldTests(unittest.TestCase):
         ):
             field.set_value(value)
 
-        controller.apply_box_fields()
-        controller.resegment_selected()
+        controller.annotations.apply_box_fields()
+        controller.inference.resegment_selected()
 
         self.assertEqual(errors, [])
         self.assertEqual(annotation.box_xyxy, (0.0, 0.0, 100.0, 80.0))
@@ -551,8 +551,8 @@ class GuiFieldTests(unittest.TestCase):
         image = self.open_image_project(window, controller)
         annotation = Annotation(0, "car", (10, 20, 30, 40), id="ann-1")
         image.replace_sam3_drafts([annotation])
-        controller.load_current_image()
-        controller.select_annotation(annotation.id)
+        controller.presentation.load_current_image()
+        controller.annotations.select_annotation(annotation.id)
         before = annotation.to_dict()
         for field, value in zip(
             (
@@ -565,7 +565,7 @@ class GuiFieldTests(unittest.TestCase):
         ):
             field.set_value(value)
 
-        controller.apply_box_fields()
+        controller.annotations.apply_box_fields()
 
         self.assertEqual(annotation.to_dict(), before)
         self.assertEqual(tasks.segmentation_calls, [])
