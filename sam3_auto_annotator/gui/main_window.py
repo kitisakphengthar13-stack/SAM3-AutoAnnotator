@@ -28,6 +28,26 @@ from sam3_auto_annotator.gui.widgets.elided_label import ElidedLabel
 IMAGE_FILTER = "Images (*.jpg *.jpeg *.png *.bmp *.tif *.tiff *.webp)"
 
 
+class _SurfaceRouter:
+    """Temporary controller boundary while surfaces are no longer tabs."""
+
+    def __init__(self, window):
+        self.window = window
+        self._current = window.setup
+
+    def setCurrentWidget(self, widget):
+        self._current = widget
+        if widget is self.window.setup:
+            self.window.show_setup()
+        elif widget is self.window.annotation:
+            self.window.show_review()
+        elif widget is self.window.results:
+            self.window.show_results()
+
+    def currentWidget(self):
+        return self._current
+
+
 class MainWindow(QMainWindow):
     """Canvas-first desktop shell; workflow coordination lives in AppController."""
 
@@ -48,6 +68,7 @@ class MainWindow(QMainWindow):
         self.addToolBar(self.command_bar)
 
         self.canvas_area = CanvasWorkspace(self.actions, self)
+        self.workspace = self.canvas_area
         self.setCentralWidget(self.canvas_area)
 
         self.dataset = DatasetPanel(self.actions)
@@ -62,11 +83,22 @@ class MainWindow(QMainWindow):
         )
         self.annotation_dock.setMinimumWidth(280)
 
+        # The drawing class must be visible where drawing happens. The combo boxes
+        # share the same class model, but keep independent current selections.
+        self.canvas_area.active_class_combo.setModel(self.annotation.class_combo.model())
+        self.canvas_area.active_class_combo.currentIndexChanged.connect(
+            self.annotation.class_combo.setCurrentIndex
+        )
+
         self.setup = SetupPanel(self.actions)
         self.setup_dialog = self._dialog("Project Setup", self.setup, 430, 650)
         self.results = ResultsPanel(self.actions)
         self.results_dialog = self._dialog("Export", self.results, 500, 680)
+        self.inspector = _SurfaceRouter(self)
 
+        self.actions.zoom_in.triggered.connect(self.canvas.zoom_in)
+        self.actions.zoom_out.triggered.connect(self.canvas.zoom_out)
+        self.actions.actual_size.triggered.connect(self.canvas.actual_size)
         self.actions.focus_workspace.toggled.connect(self.set_focus_workspace)
         self.actions.fullscreen.toggled.connect(self.set_fullscreen)
 
