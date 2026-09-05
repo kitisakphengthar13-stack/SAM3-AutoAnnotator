@@ -73,7 +73,7 @@ class AppActions(QObject):
             "Show one image pixel per screen pixel.",
         )
         self.focus_workspace = self._action(
-            "Focus Workspace", "fullscreen", "Tab",
+            "Focus Workspace", "fullscreen", "Ctrl+Shift+F",
             "Hide or restore side panels so the canvas gets maximum space.",
             checkable=True,
         )
@@ -149,7 +149,6 @@ class AppActions(QObject):
     @property
     def project_actions(self):
         return (
-            self.project_settings,
             self.import_yolo,
             self.save,
             self.run_current,
