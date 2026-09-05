@@ -94,6 +94,21 @@ class WorkstationControllerTests(unittest.TestCase):
         self.assertNotIn("remaining_prediction_targets", module_source)
         self.assertNotIn("set_prompt_error(", source)
 
+    def test_private_forwarding_api_is_gone(self):
+        for name in (
+            "_load_project",
+            "_sync_project_settings",
+            "_render_current_annotations",
+            "_start_task",
+            "_output_dir",
+            "_mark_dirty",
+            "_update_actions",
+            "_update_context",
+            "_report_error",
+        ):
+            with self.subTest(name=name):
+                self.assertFalse(hasattr(self.controller, name))
+
     def test_active_signal_routing_targets_focused_controllers(self):
         source = inspect.getsource(WorkstationController)
         self.assertIn("actions.open_image: self.projects.open_image", source)
@@ -103,26 +118,6 @@ class WorkstationControllerTests(unittest.TestCase):
             source,
         )
         self.assertIn("self.tasks.prediction_ready.connect(self.inference.prediction_ready)", source)
-
-    def test_export_methods_route_through_extracted_controller(self):
-        calls = []
-        self.controller.exports.export_labels = lambda: calls.append("export")
-        self.controller.exports.save_preview = (
-            lambda silent=False: calls.append(("preview", silent)) or "preview.png"
-        )
-        self.controller.exports.open_preview = lambda: calls.append("open-preview")
-        self.controller.exports.open_output = lambda: calls.append("open-output")
-
-        self.controller.export_labels()
-        result = self.controller.save_preview(silent=True)
-        self.controller.open_preview()
-        self.controller.open_output()
-
-        self.assertEqual(result, "preview.png")
-        self.assertEqual(
-            calls,
-            ["export", ("preview", True), "open-preview", "open-output"],
-        )
 
     def test_project_activation_does_not_open_setup_dialog(self):
         self.assertFalse(self.window.setup_dialog.isVisible())
