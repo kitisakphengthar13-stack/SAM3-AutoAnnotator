@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from sam3_auto_annotator.app_paths import discover_default_model
-from sam3_auto_annotator.gui.controller import UiMode
+from sam3_auto_annotator.gui.controllers.state import UiMode
 from sam3_auto_annotator.services.project_service import (
     default_output_dir,
     import_yolo_project,
