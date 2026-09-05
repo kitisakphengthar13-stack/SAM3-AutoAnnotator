@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication
 from domain import Annotation, AnnotationSource, ImageRecord, ImageStatus
 from gui.controllers import WorkstationController
 from gui.main_window import MainWindow
-from gui.undo import ImageSnapshotCommand
+from gui.undo import AnnotationSnapshotCommand
 from services.project_service import create_project
 
 
@@ -27,7 +27,7 @@ class MemorySettings:
         pass
 
 
-class ImageSnapshotUndoTests(unittest.TestCase):
+class AnnotationSnapshotUndoTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
@@ -58,7 +58,7 @@ class ImageSnapshotUndoTests(unittest.TestCase):
         stack = QUndoStack()
 
         stack.push(
-            ImageSnapshotCommand(
+            AnnotationSnapshotCommand(
                 image,
                 before,
                 after,
@@ -92,7 +92,7 @@ class ImageSnapshotUndoTests(unittest.TestCase):
         callbacks = []
         stack = QUndoStack()
         stack.push(
-            ImageSnapshotCommand(
+            AnnotationSnapshotCommand(
                 image,
                 before,
                 after,
@@ -117,7 +117,7 @@ class ImageSnapshotUndoTests(unittest.TestCase):
         after = image.to_dict()
         stack = QUndoStack()
         stack.push(
-            ImageSnapshotCommand(
+            AnnotationSnapshotCommand(
                 image,
                 before,
                 after,
@@ -133,6 +133,34 @@ class ImageSnapshotUndoTests(unittest.TestCase):
         stack.redo()
         self.assertEqual(len(image.active_annotations), 1)
         self.assertEqual(image.active_annotations[0].class_name, "person")
+
+    def test_annotation_snapshot_never_restores_unrelated_image_metadata(self):
+        image = ImageRecord("original.png", 5, width=100, height=80)
+        before = image.to_dict()
+        image.add_manual_annotation(0, "person", (2, 3, 20, 30))
+        after = image.to_dict()
+        stack = QUndoStack()
+        stack.push(
+            AnnotationSnapshotCommand(
+                image,
+                before,
+                after,
+                lambda *_args: None,
+                text="Add annotation",
+            )
+        )
+
+        image.image_path = "relocated.png"
+        image.image_name = "relocated.png"
+        image.width = 640
+        image.height = 480
+        stack.undo()
+
+        self.assertEqual(image.image_path, "relocated.png")
+        self.assertEqual(image.image_name, "relocated.png")
+        self.assertEqual((image.width, image.height), (640, 480))
+        self.assertEqual(image.active_annotations, [])
+        self.assertEqual(image.status, ImageStatus.NOT_PREDICTED)
 
     def test_undo_to_clean_index_clears_dirty_but_external_change_survives(self):
         with tempfile.TemporaryDirectory() as temp_dir:
