@@ -38,7 +38,7 @@ class CommandBar(QToolBar):
         self.addSeparator()
         self.addAction(actions.run_current)
         self.addAction(actions.project_settings)
-        self.addAction(actions.export)
+        self.addAction(actions.export_dialog)
 
     def tool_button(self, action):
         return self.widgetForAction(action)
@@ -54,7 +54,7 @@ def build_menus(window, actions):
         actions.project_settings,
         actions.import_yolo,
         actions.save,
-        actions.export,
+        actions.export_dialog,
     ):
         file_menu.addAction(action)
     file_menu.addSeparator()
