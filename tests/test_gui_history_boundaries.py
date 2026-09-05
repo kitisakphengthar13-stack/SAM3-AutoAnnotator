@@ -79,6 +79,22 @@ class GuiHistoryBoundaryTests(unittest.TestCase):
         self.assertEqual(self.window.history.stack.count(), 0)
         self.assertTrue(self.controller.dirty)
 
+    def test_sync_time_settings_mutation_marks_dirty_and_discards_old_history(self):
+        self.add_undoable_box()
+        self.window.history.mark_clean()
+        QCoreApplication.processEvents()
+        self.assertFalse(self.controller.dirty)
+
+        self.window.setup.conf_edit.setValue(0.73)
+        prompts = self.controller.projects.sync_project_settings()
+        QCoreApplication.processEvents()
+
+        self.assertEqual(prompts, ["car"])
+        self.assertEqual(self.controller.project.confidence, 0.73)
+        self.assertTrue(self.controller.dirty)
+        self.assertEqual(self.window.history.stack.count(), 0)
+        self.assertFalse(self.window.actions.undo.isEnabled())
+
 
 if __name__ == "__main__":
     unittest.main()
