@@ -269,8 +269,6 @@ class AnnotationController:
         reviewed_index = image.image_index
         if not self.mark_current_reviewed():
             return
-        # Needs-Review filtering may already move selection when the reviewed
-        # image disappears. Advance only when the same image remains selected.
         if host.current_image_index != reviewed_index:
             return
         if host.view.actions.next_image.isEnabled():
@@ -279,7 +277,7 @@ class AnnotationController:
     def after_annotation_change(self, select_id=None):
         host = self.host
         image = host.current_image
-        host.presentation.mark_dirty(refresh=False)
+        host.presentation.mark_dirty(refresh=False, history_managed=True)
         if image is not None:
             host.view.dataset.refresh(image.image_index)
         self.render_current_annotations(select_id)
