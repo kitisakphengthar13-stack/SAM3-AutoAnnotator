@@ -38,8 +38,7 @@ build/
 Thumbs.db
 desktop.ini
 
-# Project outputs
-/outputs/
+# Generated annotation artifacts accidentally copied into the source checkout
 preview_results/
 yolo_labels/
 annotation_state.json
@@ -54,7 +53,6 @@ sam3_auto_annotation_xyn_outputs.csv
 /videos/
 
 # Model weights / ML artifacts
-/models/
 weights/
 *.pt
 *.pth
