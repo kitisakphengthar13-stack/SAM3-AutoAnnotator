@@ -1,0 +1,79 @@
+name: Repair flat-layout tests v2
+
+on:
+  push:
+    branches:
+      - redesign/canvas-workspace-v2
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: ${{ !contains(github.event.head_commit.message, '[layout-tests-fixed]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update tests for removed compatibility API
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          workstation = Path('tests/test_workstation_controller.py')
+          text = workstation.read_text(encoding='utf-8')
+          text = text.replace('from gui.controller import AppController\n', '')
+          text = re.sub(
+              r'\n    def test_legacy_app_controller_is_only_an_alias\(self\):.*?(?=\n    def test_active_use_case_controllers)',
+              '\n',
+              text,
+              flags=re.S,
+          )
+          text = text.replace(
+              '    def save_window(self, _window, _workspace=None):\n        pass\n',
+              '    def save_window(self, _window):\n        pass\n',
+          )
+          workstation.write_text(text, encoding='utf-8')
+
+          fields = Path('tests/test_gui_fields.py')
+          text = fields.read_text(encoding='utf-8')
+          text = text.replace(
+              '    from gui.controller import AppController, UiMode\n',
+              '    from gui.controllers import WorkstationController\n'
+              '    from gui.controllers.state import UiMode\n',
+          )
+          text = text.replace(
+              '        def save_window(self, window, splitter):\n            self.saved_window = (window, splitter)\n',
+              '        def save_window(self, window):\n            self.saved_window = window\n',
+          )
+          text = text.replace(
+              'controller = AppController(window, settings, task_manager=tasks)',
+              'controller = WorkstationController(window, settings, task_manager=tasks)',
+          )
+          fields.write_text(text, encoding='utf-8')
+
+          controller_tests = Path('tests/test_gui_controller.py')
+          text = controller_tests.read_text(encoding='utf-8')
+          text = text.replace(
+              '    def save_window(self, _window, _splitter):\n        pass\n',
+              '    def save_window(self, _window):\n        pass\n',
+          )
+          controller_tests.write_text(text, encoding='utf-8')
+
+          # Only executable/import references are forbidden. Literal history assertions are harmless.
+          bad = []
+          for path in Path('tests').rglob('*.py'):
+              body = path.read_text(encoding='utf-8')
+              if 'from gui.controller import' in body or 'import gui.controller' in body or 'AppController(' in body:
+                  bad.append(str(path))
+          if bad:
+              raise SystemExit('executable retired-controller references remain: ' + ', '.join(bad))
+          PY
+      - name: Commit repaired tests
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests
+          git commit -m "tests: target flat source controller API [layout-tests-fixed]"
+          git push origin HEAD:redesign/canvas-workspace-v2
