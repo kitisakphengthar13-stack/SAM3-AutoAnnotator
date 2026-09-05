@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
 )
 
 from sam3_auto_annotator.gui.icons import ICONS, icon
-from sam3_auto_annotator.gui.widgets.action_button import action_button
 from sam3_auto_annotator.gui.widgets.class_prompt_editor import ClassPromptEditor
 from sam3_auto_annotator.gui.widgets.path_display import PathDisplay
 
@@ -29,6 +28,7 @@ class SetupPanel(QWidget):
 
     def __init__(self, actions, parent=None):
         super().__init__(parent)
+        del actions
         self.setObjectName("setupPanel")
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -66,8 +66,6 @@ class SetupPanel(QWidget):
         output_row.addWidget(self.output_dir_edit, 1)
         output_row.addWidget(self.browse_output_button)
         output_layout.addRow("Output", output_row)
-        self.import_yolo_button = action_button(actions.import_yolo)
-        output_layout.addRow(self.import_yolo_button)
         layout.addWidget(output_group)
 
         sam_group = QGroupBox("SAM3 Settings")
