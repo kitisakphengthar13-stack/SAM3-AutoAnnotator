@@ -7,13 +7,11 @@ not a GUI wrapper around a CLI. Architecture is organized around a high-frequenc
 human review loop while preserving independent domain, inference, and storage
 boundaries.
 
-The repeated product path is:
-
 ```text
 Open -> Configure -> Predict/Import -> Inspect/Edit -> Review & Next -> Save -> Export
 ```
 
-Configuration and export are secondary workflows. They must not dictate the
+Configuration and export are secondary transactions. They do not define the
 persistent geometry of the annotation workspace.
 
 ## Top-level boundaries
@@ -34,6 +32,7 @@ sam3_auto_annotator/
     |-- main_window.py
     |-- settings.py
     |-- theme.py
+    |-- undo.py
     |-- models/
     |-- rendering/
     |-- resources/
@@ -42,8 +41,8 @@ sam3_auto_annotator/
     `-- widgets/
 ```
 
-`core`, `services`, `sam3`, and `storage` remain UI-independent. The GUI may be
-redesigned without changing annotation rules or export semantics.
+`core`, `services`, `sam3`, and `storage` remain UI-independent. GUI structure may
+be replaced without changing annotation/export domain rules.
 
 ### Core
 
@@ -53,126 +52,142 @@ segmentation validity, serialization-ready records. No Qt or Ultralytics imports
 ### Services
 
 Application use cases: create/load/save projects, import labels, apply annotation
-edits, run prediction/re-segmentation, select pending targets, and build export
-results. Services do not own desktop widgets.
+edits, run prediction/re-segmentation, select pending targets, and build exports.
+Services do not own desktop widgets.
 
 ### SAM3 boundary
 
 Lazy Ultralytics predictor construction, cache/reuse, precision configuration, and
-mapping third-party results into editable application annotations.
+mapping third-party results into editable annotations.
 
 ### Storage
 
 Filesystem behavior: image discovery, atomic project persistence, YOLO import, CSV
 and YOLO export, summaries, and skipped-segmentation reports.
 
-### GUI
-
-Qt presentation and interaction. The current redesign uses Qt desktop mechanisms
-rather than recreating a custom window framework.
-
 ## Canvas-first window composition
-
-`QMainWindow` owns the persistent application shell.
 
 ```text
 QMainWindow
-|-- menu / command bar
+|-- menu / compact command bar
 |-- left QDockWidget: Dataset
 |-- central widget: CanvasWorkspace
-|-- right QDockWidget: Objects / selected annotation
-|-- modeless Setup QDialog
-|-- modeless Export QDialog
+|-- right QDockWidget: Objects
+|-- window-modal Setup QDialog
+|-- window-modal Export QDialog
 `-- status bar
 ```
 
-The central widget is always the image work surface. There is no architectural
-requirement for a three-way Dataset/Canvas/Inspector splitter and no persistent
-Setup/Review/Export tab stack.
+There is no architectural requirement for a three-way Dataset/Canvas/Inspector
+splitter and no persistent Setup/Review/Export tab stack.
 
 ### Dataset dock
 
-Owns image search, status filtering, image counts, list selection, and previous /
-next navigation. It can be closed, moved, or floated. Closing it must not disable
-canvas editing.
+Owns search, status filtering, image counts, list selection, and previous/next
+navigation. It can be closed, moved, floated, and restored through View.
 
 ### Objects dock
 
-Owns the current-image object table and precise selected-annotation editing. It can
-be closed, moved, or floated. Selecting an object from the canvas may reveal this
-dock, but the dock is not the source of canvas geometry.
+The object table is the primary content. Compact selected-object controls below it
+provide class, exact coordinates, re-segmentation, reset, and delete. The dock can
+be hidden without making class identity unknowable because objects are labeled on
+the canvas.
 
 ### Canvas workspace
 
 Owns:
 
 - image rendering and editable bounding boxes;
-- active class for the next manually drawn object;
-- Draw mode;
+- class/confidence labels attached to visible boxes;
+- independent active class for the next new box;
+- mutually exclusive Select / Pan / Box tools;
+- temporary Space-pan while Select is active;
 - Zoom Out / 100% / Zoom In / Fit;
-- Space-drag hand panning;
 - box/mask/polygon visibility;
-- inference progress and cancellation state;
+- inference progress/cancellation;
 - focus-workspace control.
 
-The active drawing class is intentionally next to Draw. Manual object creation
-must never read a class choice that is only visible in another hidden surface.
+The active drawing class is not the selected-object class editor. These selections
+share the same class model but not the same current index.
 
-### Setup dialog
+### Setup transaction
 
-Owns model path, prompts/classes, confidence, fp16, output location, import, and
-prediction commands during the transition. It is transient configuration, not a
-permanent third column.
+Setup stages model path, prompts/classes, confidence, FP16, and output location.
+Typing does not mutate `ProjectState`. Apply emits one validated settings commit;
+Cancel or window close restores the snapshot captured when the dialog opened.
+Invalid class removal leaves the dialog open with validation feedback.
 
-### Export dialog
+Prediction commands are not owned by the Setup form. They remain in the annotation
+workflow so configuration does not become the primary application surface.
 
-Owns export results, generated paths, preview, and output-folder actions. Export
-preflight can evolve here without consuming canvas width during annotation.
+### Export transaction
 
-## Window and view commands
+`Ctrl+E` opens preflight rather than writing files. The dialog summarizes review
+completion, failed/unpredicted images, and stale/missing segmentation. A separate
+primary action inside the dialog performs the write and becomes **Export Anyway**
+when warnings are present. The same transient surface presents output paths and
+preview after completion.
 
-Qt semantics are kept distinct:
+## Editing safety and undo
 
-- **Fit** fits the image to the current canvas viewport.
-- **100%** restores a 1:1 image/screen transform.
-- **Zoom In/Out** change canvas scale.
-- **Focus Workspace** hides side docks and later restores their prior visibility.
-- **Fullscreen** changes the actual main-window fullscreen state (`F11`).
+Routine object edits use `QUndoStack`. The current bridge stores completed
+`ImageRecord` before/after snapshots in `ImageSnapshotCommand` so add, move/resize,
+class change, exact-coordinate edits, reset, and delete are reversible.
 
-Window maximize/fullscreen must not be represented by the Fit action.
+`QUndoStack.push()` calls `redo()` immediately, so a snapshot command deliberately
+skips its first redo: the controller has already completed the mutation before the
+command is recorded. Subsequent undo/redo restores a fresh `ImageRecord` from the
+serialized snapshot and republishes models/canvas state.
 
-## Commands and action state
+Inference clears the object-edit undo stack. Model-generated replacement or
+re-segmentation is a different mutation boundary and must not be mixed with stale
+pre-inference snapshots.
 
-Each user command remains one `QAction`. Menu, command bar, canvas buttons, and
-panel buttons reuse those actions where appropriate so shortcut, tooltip,
-checked state, and enabled state stay synchronized.
+This snapshot implementation is a safe migration layer, not permission to keep
+all annotation coordination inside `MainWindow`. The target controller split is:
 
-`AppController` currently remains the coordination boundary for existing project
-workflows. The redesign must not grow it further; subsequent slices should split
-project, annotation, inference, and export coordination when doing so reduces
-coupling. A large controller is not preserved merely because it already exists.
+```text
+ProjectController
+AnnotationController  -> owns edit commands / undo policy
+InferenceController
+ExportController
+```
 
-## Collection models
+`AppController` is still oversized and remains scheduled for decomposition.
+
+## Commands and window semantics
+
+- Fit fits the image viewport.
+- 100% restores a 1:1 transform.
+- Zoom changes only canvas scale.
+- Focus Workspace hides/restores side docks.
+- Fullscreen changes actual main-window state (`F11`).
+- Select (`Esc`), Pan (`P`), and Box (`B`) are exclusive editing modes.
+- Undo/Redo use standard platform shortcuts.
+
+Fit never substitutes for window maximize/fullscreen.
+
+The global command bar is intentionally small. Dense canvas tools stay in the
+canvas bar. Navigation and undo/redo use compact icon-only toolbar controls to
+avoid creating an overflow-navigation dependency at the minimum window size.
+
+## Models and background work
 
 Images use `QAbstractListModel` plus `QSortFilterProxyModel`; annotations use
-`QAbstractTableModel`. Domain records remain owned by the project and Qt models
-publish their state to views.
-
-## Background work
+`QAbstractTableModel`. Domain records remain project-owned and Qt models publish
+state to views.
 
 Inference remains off the GUI thread through worker `QObject` instances in
 `QThread`. Cancellation is cooperative. No redesign may move blocking SAM3 work
 onto the main thread.
 
-## Persistent UI state
+## Persistent UI and project state
 
-`QSettings` stores window geometry and `QMainWindow.saveState()` data. The latter
-already includes toolbar and dock placement, so the retired splitter-state format
-is no longer persisted. The UI settings version is bumped when this contract
-changes.
+`QSettings` stores window geometry and `QMainWindow.saveState()` data, including
+toolbar/dock placement. Retired splitter-state persistence is not retained.
 
-Project content remains exclusively in `annotation_state.json`; window layout
-must never mutate annotation data.
+Project content remains exclusively in `annotation_state.json`; window layout must
+never mutate annotation data.
 
 ## Data safety invariants
 
@@ -188,19 +203,14 @@ must never mutate annotation data.
 
 ## Verification philosophy
 
-Tests should assert outcomes and interactions, not preserve obsolete widget trees.
-The UI acceptance suite therefore checks canvas centrality, dock behavior, focus
-workspace, setup/export transient surfaces, visible drawing class, zoom/fit/100%,
-Space-pan, and distinct fullscreen semantics.
+Tests assert user-visible outcomes rather than obsolete widget trees. Current UI
+acceptance coverage targets central canvas/docks, tool modes, drawing-class
+independence, labels, zoom/pan, fullscreen semantics, undo snapshots, transactional
+Setup, and Export preflight.
 
 Offscreen Qt tests are necessary but not sufficient. Visible Windows verification
-is required for native title bar behavior, maximize/fullscreen, dock interaction,
-high-DPI scaling, mouse hit targets, and keyboard shortcuts.
-
-## Upstream references
-
-- Qt for Python / Qt Widgets documentation
-- `QMainWindow`, `QDockWidget`, `QAction`, `QGraphicsView`, `QSettings`
-- Ultralytics SAM 3 guide and predictor API
+is required for native title bar behavior, maximize/fullscreen restoration, dock
+interaction, high-DPI scaling, real pointer hit targets, toolbar overflow behavior,
+and keyboard shortcuts.
 
 The concrete user-visible contract lives in [UI audit](ui-audit.md).
