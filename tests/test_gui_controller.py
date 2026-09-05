@@ -89,7 +89,7 @@ class GuiControllerTests(unittest.TestCase):
             project_name="controller-test",
             half=False,
         )
-        self.controller._load_project(project)
+        self.controller.projects.load_project(project)
         QApplication.processEvents()
 
     def tearDown(self):
@@ -100,7 +100,7 @@ class GuiControllerTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_task_started_enables_cancel_and_disables_all_setup_browsing(self):
-        self.controller._start_task(UiMode.BATCH)
+        self.controller.inference.start_task(UiMode.BATCH)
         self.tasks.start_batch([])
 
         self.assertTrue(self.window.actions.cancel_batch.isEnabled())
@@ -131,7 +131,7 @@ class GuiControllerTests(unittest.TestCase):
     def test_removing_a_class_in_use_is_rejected_on_apply_without_corrupting_data(self):
         image = self.controller.current_image
         add_manual_annotation(image, 0, "car", (5, 5, 30, 30))
-        self.controller._render_current_annotations()
+        self.controller.annotations.render_current_annotations()
         before = len(image.active_annotations)
         self.window.show_setup()
         QApplication.processEvents()
@@ -151,7 +151,7 @@ class GuiControllerTests(unittest.TestCase):
         self.assertFalse(self.window.actions.draw_box.isEnabled())
         self.assertFalse(self.window.actions.export.isEnabled())
 
-        self.controller.add_manual_box((35, 5, 60, 30))
+        self.controller.annotations.add_manual_box((35, 5, 60, 30))
         self.assertEqual(len(image.active_annotations), before)
         self.assertEqual(len(self.errors), 1)
         self.assertIn("Classes in use cannot be removed", self.errors[0][1]["details"])
@@ -168,7 +168,7 @@ class GuiControllerTests(unittest.TestCase):
     def test_canvas_context_updates_after_annotation_change(self):
         self.assertIn("0 annotations", self.window.canvas_area.canvas_hint.text())
 
-        self.controller.add_manual_box((5, 5, 30, 30))
+        self.controller.annotations.add_manual_box((5, 5, 30, 30))
 
         self.assertIn("1 annotations", self.window.canvas_area.canvas_hint.text())
 
@@ -180,7 +180,7 @@ class GuiControllerTests(unittest.TestCase):
         )
         self.window.choose_folder = lambda *_args, **_kwargs: str(label_dir)
 
-        self.controller.import_yolo()
+        self.controller.projects.import_yolo()
 
         self.assertEqual(
             self.controller.project.prompts,
