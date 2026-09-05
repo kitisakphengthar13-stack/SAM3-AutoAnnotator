@@ -44,8 +44,9 @@ has no project-name wrapper package and no forwarding entrypoint.
 
 ## Application controller composition
 
-`application.py` constructs `WorkstationController`. It is a small composition root
-for shared application state, signal wiring, and focused controllers:
+`src/main.py` is the executable composition root and constructs
+`WorkstationController`. The controller owns shared application state and wires the
+focused controllers:
 
 ```text
 WorkstationController
@@ -69,8 +70,9 @@ Responsibilities are explicit:
 - `PresentationController`: image loading, dataset-filter presentation, dirty/status
   context, action enablement policy, and GUI error reporting.
 
-`WorkstationController` does not inherit a monolithic controller and does not
-reimplement these use cases. The retired Inspector API and `ControllerSurfaceAdapter` no longer exist.
+`WorkstationController` does not inherit a monolithic controller. The retired
+`gui/controller.py`, `AppController`, Inspector API, and `ControllerSurfaceAdapter`
+do not exist in the active tree.
 
 ## Main window and coordinators
 
@@ -83,9 +85,11 @@ Cross-widget UI transactions live in `gui/coordinators/`:
 - `AnnotationHistoryCoordinator`: undo/redo capture and replay boundaries;
 - `AnnotationInteractionCoordinator`: Review & Next follow-up;
 - `SetupDialogCoordinator`: staged Apply/Cancel setup transaction;
-- `ExportDialogCoordinator`: export preflight/result dialog behavior.
+- `ExportDialogCoordinator`: export preflight/result presentation.
 
-Tests guard against moving those algorithms back into `MainWindow`.
+Export-readiness rules live in `services/export_service.py`; the export dialog only
+presents those results. Setup/history coordinators call the focused controller that
+owns each responsibility rather than private methods on the workstation facade.
 
 ## Canvas-first window composition
 
@@ -100,8 +104,8 @@ QMainWindow
 `-- status bar
 ```
 
-There is no architectural requirement for a three-way Dataset/Canvas/Inspector
-splitter and no persistent Setup/Review/Export tab stack.
+There is no three-way Dataset/Canvas/Inspector splitter and no persistent
+Setup/Review/Export tab stack.
 
 ### Dataset dock
 
@@ -184,11 +188,26 @@ Required invariants include:
 - unsaved work is protected on close;
 - active inference is cancelled cooperatively rather than force-terminated.
 
+## Repository invariants
+
+Automated architecture tests reject restoration of the retired repository shape:
+
+- no root `main.py` forwarding script;
+- no `sam3_auto_annotator/` project-name wrapper at root or under `src/`;
+- no root `images_test/`;
+- no `src/gui/controller.py` compatibility shim;
+- no imports from the removed namespace;
+- no one-shot migration workflows left in the repository.
+
+Integration images live under `tests/fixtures/images/`. Generated `outputs/` and
+local model directories are runtime data ignored by Git.
+
 ## Verification philosophy
 
 Tests assert user-visible behavior and architecture boundaries rather than the old
-widget tree. CI dependency-resolves production requirements, compiles the project,
-and runs the complete offscreen suite on each current branch head.
+widget tree. CI uses `PYTHONPATH=src`, dependency-resolves production requirements,
+compiles `src` and `tests`, and runs the complete offscreen suite on each branch
+head.
 
 Offscreen Qt tests are necessary but not sufficient. Visible Windows verification
 is still required for native title-bar behavior, maximized/fullscreen restoration,

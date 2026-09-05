@@ -9,27 +9,27 @@ Branch: `redesign/canvas-workspace-v2`
 
 The redesign now includes:
 
+- flat repository source tree under `src/` with no project-name wrapper package;
+- one executable composition root at `src/main.py` and no root forwarding script;
+- `domain`, `services`, `sam3`, `storage`, and `gui` directly under `src/`;
+- integration images under `tests/fixtures/images/`;
+- generated `outputs/` excluded from Git;
 - canvas-first `QMainWindow` with Dataset/Objects docks;
 - explicit Select/Pan/Box tools and independent active drawing class;
 - class/confidence labels, bounded zoom, 100%, Fit, Space-pan, Focus Workspace,
   and F11 fullscreen;
 - Undo/Redo for completed object edits and immediate single-object Delete;
-- transactional Setup and Export preflight;
-- compact command surfaces;
+- transactional Setup and service-backed Export preflight;
 - focused Project/Annotation/Inference/Export/Presentation controllers;
-- no Inspector compatibility surface;
-- no monolithic `AppController` implementation or inheritance.
-
-`gui/controller.py` is only a compatibility import alias to `WorkstationController`.
-The active application is constructed directly with `WorkstationController`.
+- no Inspector compatibility surface, `AppController`, or `gui/controller.py` shim.
 
 ## Automated branch evidence
 
-GitHub Actions run `33960250564` executed against code head
-`be2f52e2d91f3f20f551b1df5b33252ff23217ae` on 2026-09-05 and completed
+GitHub Actions run `33963467478` executed against code head
+`6f286289e4cc2513056dadd3f0d5e20e3004ada6` on 2026-09-05 and completed
 successfully.
 
-Recorded environment/checks:
+Recorded checks:
 
 - Ubuntu 24.04;
 - CPython 3.12.14;
@@ -37,38 +37,14 @@ Recorded environment/checks:
 - Pillow 12.3.0;
 - Linux EGL runtime for Qt offscreen execution;
 - production `requirements.txt` dependency resolution with `pip --dry-run` passed;
+- `PYTHONPATH=src`;
 - `python -m compileall -q src tests` passed;
-- `python -m unittest discover -s tests -v` ran **129 tests**;
-- result: **129 passed, 0 failures, 0 errors**.
+- `python -m unittest discover -s tests -v` ran **136 tests**;
+- result: **136 passed, 0 failures, 0 errors, 0 skipped**.
 
-This run includes the controller decomposition after retiring the monolithic
-`AppController` and `ControllerSurfaceAdapter`. CI uses branch-level concurrency so
-obsolete runs are cancelled when a newer branch head is pushed.
-
-The workflow uses `QT_QPA_PLATFORM=offscreen` and intentionally does not load a
-real SAM3 checkpoint. Production dependencies are resolved, while the heavy
-Torch/CUDA stack is not installed solely for GUI/domain tests.
-
-## Automated acceptance covered
-
-The suite covers, among other product and architecture invariants:
-
-- central canvas and independent recoverable docks;
-- Focus Workspace and fullscreen/Fit separation;
-- exclusive Select/Pan/Box tools and Space-pan;
-- active drawing class independence and on-canvas labels;
-- zoom/100%/Fit behavior;
-- Setup Apply/Cancel and all-or-nothing validation;
-- Export preflight before disk writes;
-- Undo/Redo snapshot semantics;
-- image decode recovery and selection synchronization;
-- prediction/re-segmentation/task boundaries;
-- save/export/project integration;
-- focused controller composition with no retired Inspector dependency;
-- `AppController` compatibility name resolving to `WorkstationController` rather
-  than a second implementation;
-- `WorkstationController` remaining composition/delegation rather than importing
-  project-service or inference implementation dependencies.
+The suite includes repository-layout guards that reject the removed wrapper package,
+root forwarding entrypoint, retired controller shim, old fixture directory, removed
+namespace imports, and one-shot migration workflows.
 
 ## Required local Windows baseline
 
@@ -78,63 +54,47 @@ From the repository root:
 .\.venv\Scripts\python.exe --version
 .\.venv\Scripts\python.exe -m pip check
 .\.venv\Scripts\python.exe -m compileall -q src tests
+$env:PYTHONPATH = "src"
 $env:QT_QPA_PLATFORM = "offscreen"
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 Remove-Item Env:QT_QPA_PLATFORM -ErrorAction SilentlyContinue
+Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
 ```
-
-A local run remains useful because the deployed workstation may use a different
-Python/PySide6/GPU environment.
 
 ## Visible Windows acceptance
 
-Run:
+Launch:
 
 ```powershell
-.\.venv\Scripts\python.exe src/main.py
+.\.venv\Scripts\python.exe src\main.py
 ```
 
 Check at minimum:
 
 1. Open `tests/fixtures/images`; Dataset is docked left, Objects right, canvas central.
-2. Close/move/float docks and restore them from View; restart and verify saved
-   `QMainWindow` state.
+2. Close/move/float docks and restore them from View; restart and verify saved state.
 3. Toggle Focus Workspace without losing image or selection.
 4. Maximize, press F11 twice, and verify return to maximized state.
 5. Verify Fit changes image framing only, never native window state.
 6. Verify Zoom Out, 100%, Zoom In, wheel zoom, Pan, and temporary Space-pan.
-7. Switch Select/Pan/Box repeatedly; Esc must return Select with unambiguous state.
+7. Switch Select/Pan/Box repeatedly; Esc must return Select.
 8. Change the active next-box class while another object is selected; the selected
    object must not be reclassified.
 9. Verify class/confidence labels do not block object selection.
 10. Add, move, resize, reclassify, reset, and delete objects; Undo/Redo each.
-11. Start inference after local edits and verify stale undo history cannot cross
-    the inference mutation boundary.
+11. Start inference after local edits and verify stale undo history cannot cross the
+    inference mutation boundary.
 12. Verify Review & Next advances exactly once when another visible image exists.
 13. Verify Setup Cancel/X discards drafts and valid Apply commits once.
 14. Remove an in-use class while changing another setting; the whole Apply must be
     rejected without partial mutation.
 15. Press Ctrl+E and verify preflight alone writes nothing; export only after the
     explicit Export Now/Export Anyway action.
-16. Check normal annotation flow at 960x620 and 1360x840 without depending on an
-    overflow chevron.
+16. Check normal annotation flow at 960x620 and 1360x840.
 17. Repeat maximized/fullscreen at Windows DPI 125% and 150%; inspect native hit
     targets, dock/title-bar behavior, text clipping, and shortcuts.
 18. Run pending inference and confirm progress/cancel remain usable in normal and
     Focus Workspace modes.
-
-## Regression requirements
-
-The redesign must continue to preserve:
-
-- corrupt image decode clears stale graphics and exposes recovery;
-- unchanged class/box edits remain no-ops;
-- canvas/table/controller selection remains synchronized;
-- project replacement clears project-specific transient state;
-- pending batch prediction does not overwrite edited/reviewed images;
-- save/reopen preserves editable project data;
-- export counts match project state;
-- close with unsaved work and active inference remains safe.
 
 ## Real SAM3 GPU check
 
