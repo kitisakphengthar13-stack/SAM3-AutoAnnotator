@@ -1,18 +1,149 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
+from PySide6.QtCore import QTimer
+
+from sam3_auto_annotator.gui.controllers.state import UiMode
 from sam3_auto_annotator.services.annotation_service import apply_box_segmentation
+from sam3_auto_annotator.services.project_service import remaining_prediction_targets
+from sam3_auto_annotator.storage.image_catalog import validate_model_path
 
 
 logger = logging.getLogger(__name__)
 
 
 class InferenceController:
-    """Apply prediction/task results to the active project and workstation views."""
+    """Own SAM3 command, task lifecycle, and application of inference results."""
 
     def __init__(self, host):
         self.host = host
+
+    def settings(self):
+        host = self.host
+        prompts = host._sync_project_settings(require_prompts=True)
+        model_path = host.view.setup.model_path_edit.text().strip()
+        validate_model_path(model_path)
+        return {
+            "model_path": model_path,
+            "prompts": prompts,
+            "confidence": host.view.setup.conf_edit.value(),
+            "half": host.view.setup.half_check.isChecked(),
+        }
+
+    def run_current(self):
+        host = self.host
+        image = host.current_image
+        if image is None or not host._current_image_loaded:
+            return
+        try:
+            settings = self.settings()
+        except Exception as exc:
+            self.finish_start_failure(exc)
+            return
+        if image.active_annotations and not host.view.confirm(
+            "Replace Current Annotations",
+            "Running SAM3 will replace all annotations on the selected image.",
+            confirm_text="Replace and Run",
+        ):
+            return
+        try:
+            self.start_task(UiMode.PREDICTING)
+            host.tasks.start_prediction(
+                image.image_index,
+                image_path=image.image_path,
+                **settings,
+            )
+            host.view.task_progress.show_running("Running SAM3…")
+        except Exception as exc:
+            self.finish_start_failure(exc)
+
+    def run_remaining(self):
+        host = self.host
+        if host.project is None:
+            return
+        targets = remaining_prediction_targets(host.project)
+        if not targets:
+            host.view.show_info(
+                "Nothing to Run",
+                "All images are already predicted, edited, reviewed, or marked as no detection.",
+            )
+            return
+        try:
+            settings = self.settings()
+            self.start_task(UiMode.BATCH)
+            host.tasks.start_batch(targets, **settings)
+            host.view.task_progress.show_running(
+                f"Preparing {len(targets)} images…",
+                len(targets),
+                cancellable=True,
+            )
+        except Exception as exc:
+            self.finish_start_failure(exc)
+
+    def resegment_selected(self):
+        host = self.host
+        annotation = host.selected_annotation
+        image = host.current_image
+        if annotation is None or image is None:
+            return
+        try:
+            settings = self.settings()
+            settings.pop("prompts")
+            self.start_task(UiMode.RESEGMENTING)
+            host.tasks.start_segmentation(
+                image.image_index,
+                annotation.id,
+                image_path=image.image_path,
+                box_xyxy=annotation.box_xyxy,
+                class_name=annotation.class_name,
+                **settings,
+            )
+            host.view.task_progress.show_running("Re-segmenting selected box…")
+        except Exception as exc:
+            self.finish_start_failure(exc)
+
+    def start_task(self, mode):
+        host = self.host
+        if host.tasks.is_running:
+            raise RuntimeError("Another SAM3 task is already running.")
+        host.mode = mode
+        host._task_project = host.project
+        host._update_actions()
+
+    def finish_start_failure(self, exc):
+        host = self.host
+        host.mode = UiMode.READY if host.project is not None else UiMode.EMPTY
+        host._task_project = None
+        host._update_actions()
+        host._report_error(
+            "Could Not Start SAM3",
+            "SAM3 could not be started with the current settings.",
+            "Select a valid model, enter at least one class, and retry.",
+            exc,
+        )
+
+    def cancel_task(self):
+        host = self.host
+        if host.tasks.request_cancel():
+            host.view.actions.cancel_batch.setEnabled(False)
+            host.view.task_progress.status_label.setText(
+                "Cancel requested; waiting for the current image…"
+            )
+
+    def task_status(self, message):
+        self.host.view.task_progress.status_label.setText(message)
+        self.host.view.set_message(message)
+
+    def task_started(self, _kind):
+        self.host._update_actions()
+
+    def batch_progress(self, current, total, image_path):
+        host = self.host
+        message = f"{current}/{total}  {Path(image_path).name}"
+        host.view.task_progress.update_progress(current - 1, total, message)
+        host.view.set_message(f"Running SAM3: {message}")
 
     def prediction_ready(self, image_index, prediction):
         host = self.host
@@ -123,3 +254,13 @@ class InferenceController:
             next_action="Check the model path, available memory, and input image, then retry.",
             details=str(message),
         )
+
+    def task_finished(self, _kind):
+        host = self.host
+        host.mode = UiMode.READY if host.project is not None else UiMode.EMPTY
+        host._task_project = None
+        host._update_actions()
+        host._update_context()
+        if host._close_pending:
+            host._close_pending = False
+            QTimer.singleShot(0, host.view.close)
