@@ -29,9 +29,9 @@ class ExportController:
         if host.project is None:
             return
         try:
-            host._sync_project_settings()
+            host.projects.sync_project_settings()
         except Exception as exc:
-            host._report_error(
+            host.presentation.report_error(
                 "Could Not Export Labels",
                 "The project settings are not valid for export.",
                 "Restore every class in use, then retry.",
@@ -61,6 +61,7 @@ class ExportController:
             host.last_export_result = result
             preview = self.save_preview(silent=True)
             host.dirty = False
+            host.view.history.mark_clean()
 
             skipped = len(result.get("skipped_segmentation_rows", []))
             counts = (
@@ -80,10 +81,10 @@ class ExportController:
                 host.view.results.set_preview(preview)
             host.view.show_results()
             host.view.set_message(f"Exported corrected labels to {output_dir}")
-            host._update_actions()
-            host._update_context()
+            host.presentation.update_actions()
+            host.presentation.update_context()
         except Exception as exc:
-            host._report_error(
+            host.presentation.report_error(
                 "Could Not Export Labels",
                 "The corrected labels could not be exported.",
                 "Check the output folder and project data, then retry.",
@@ -127,11 +128,11 @@ class ExportController:
             if not silent:
                 host.view.show_results()
                 host.view.set_message(f"Saved preview to {output_path}")
-            host._update_actions()
+            host.presentation.update_actions()
             return output_path
         except Exception as exc:
             if not silent:
-                host._report_error(
+                host.presentation.report_error(
                     "Could Not Save Preview",
                     "The preview image could not be created.",
                     "Check the source image and output folder, then retry.",
