@@ -48,10 +48,10 @@ sam3_auto_annotation_box_outputs.csv
 sam3_auto_annotation_xyn_outputs.csv
 
 # Local datasets / media
-data/
-datasets/
-images/
-videos/
+/data/
+/datasets/
+/images/
+/videos/
 
 # Model weights / ML artifacts
 /models/
