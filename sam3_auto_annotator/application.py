@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_application(argv=None):
-    """Create the one QApplication and compose the desktop window."""
+    """Create the one QApplication and compose the desktop application."""
     configure_c_locale()
     QApplication.setOrganizationName("SAM3-AutoAnnotator")
     QApplication.setOrganizationDomain("sam3-auto-annotator.local")
@@ -35,8 +35,7 @@ def create_application(argv=None):
 
     settings = UiSettings()
     window = MainWindow()
-    controller = AppController(window, settings)
-    window.controller = controller
+    AppController(window, settings)
     window.ui_settings = settings
     settings.restore_window(window, window.workspace)
     window.diagnostic_log_path = log_path
