@@ -195,7 +195,6 @@ class MainWindow(QMainWindow):
         self.status_context.setText(str(text))
 
     def set_project_title(self, text):
-        self.history.sync_project()
         self.command_bar.project_label.setText(str(text))
 
     def show_canvas(self, enabled):
@@ -251,15 +250,9 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, str(title), str(message))
 
     def confirm(self, title, message, *, confirm_text=None):
-        title = str(title)
-        if title == "Delete Annotation":
-            return True
-        if self.export_flow.bypass_incomplete_confirmation(title):
-            return True
-
         dialog = QMessageBox(self)
         dialog.setIcon(QMessageBox.Question)
-        dialog.setWindowTitle(title)
+        dialog.setWindowTitle(str(title))
         dialog.setText(str(message))
         confirm_button = dialog.addButton(
             confirm_text or "Continue", QMessageBox.AcceptRole
