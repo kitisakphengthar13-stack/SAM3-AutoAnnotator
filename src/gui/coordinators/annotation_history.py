@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import QTimer
 from PySide6.QtGui import QUndoStack
 
 from gui.undo import AnnotationSnapshotCommand
@@ -33,7 +32,7 @@ class AnnotationHistoryCoordinator:
         actions.redo.triggered.connect(self.stack.redo)
         self.stack.canUndoChanged.connect(actions.undo.setEnabled)
         self.stack.canRedoChanged.connect(actions.redo.setEnabled)
-        self.stack.cleanChanged.connect(self._clean_changed)
+        self.stack.indexChanged.connect(self._index_changed)
 
     def sync_project(self):
         controller = self.window.controller
@@ -111,11 +110,9 @@ class AnnotationHistoryCoordinator:
         else:
             controller.presentation.update_actions()
             controller.presentation.update_context()
-        # QUndoStack updates its index after the command callback returns.
-        QTimer.singleShot(0, self._sync_dirty_state)
 
-    def _clean_changed(self, _clean):
-        QTimer.singleShot(0, self._sync_dirty_state)
+    def _index_changed(self, _index):
+        self._sync_dirty_state()
 
     def _sync_dirty_state(self):
         controller = self.window.controller
