@@ -77,9 +77,17 @@ class AppActions(QObject):
             "Delete", "trash", QKeySequence.StandardKey.Delete,
             "Delete the selected annotation. Undo restores it.", role="danger",
         )
+        self.export_dialog = self._action(
+            "Export…", "export", "Ctrl+E",
+            "Review export readiness before writing corrected labels.", role="export",
+        )
         self.export = self._action(
-            "Export Labels", "export", "Ctrl+E",
-            "Review export readiness and write corrected labels.", role="export",
+            "Export Now", "export", None,
+            "Write corrected labels using the reviewed export plan.", role="export",
+        )
+        self.export_dialog.setEnabled(False)
+        self.export.changed.connect(
+            lambda: self.export_dialog.setEnabled(self.export.isEnabled())
         )
         self.fit = self._action(
             "Fit", "fit", "F",
