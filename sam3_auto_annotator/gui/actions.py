@@ -36,6 +36,16 @@ class AppActions(QObject):
             "Save Project", "save", QKeySequence.StandardKey.Save,
             "Save the editable project state.",
         )
+        self.undo = self._action(
+            "Undo", "undo", QKeySequence.StandardKey.Undo,
+            "Undo the last annotation edit.",
+        )
+        self.redo = self._action(
+            "Redo", "redo", QKeySequence.StandardKey.Redo,
+            "Redo the last undone annotation edit.",
+        )
+        self.undo.setEnabled(False)
+        self.redo.setEnabled(False)
         self.run_current = self._action(
             "Run SAM3", "sam3", "F5",
             "Run SAM3 on the selected image.", role="primary",
@@ -65,7 +75,7 @@ class AppActions(QObject):
 
         self.delete_annotation = self._action(
             "Delete", "trash", QKeySequence.StandardKey.Delete,
-            "Delete the selected annotation.", role="danger",
+            "Delete the selected annotation. Undo restores it.", role="danger",
         )
         self.export = self._action(
             "Export Labels", "export", "Ctrl+E",
