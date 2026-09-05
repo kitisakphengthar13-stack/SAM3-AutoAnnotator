@@ -19,7 +19,7 @@ class MemorySettings:
     def set_last_directory(self, _path):
         pass
 
-    def save_window(self, _window, _splitter):
+    def save_window(self, _window):
         pass
 
 

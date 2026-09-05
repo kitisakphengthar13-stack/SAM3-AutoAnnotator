@@ -10,7 +10,6 @@ from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
-from gui.controller import AppController
 from gui.controllers import WorkstationController
 from gui.controllers.annotation_controller import AnnotationController
 from gui.controllers.export_controller import ExportController
@@ -28,7 +27,7 @@ class MemorySettings:
     def set_last_directory(self, _path):
         pass
 
-    def save_window(self, _window, _workspace=None):
+    def save_window(self, _window):
         pass
 
 
@@ -65,10 +64,6 @@ class WorkstationControllerTests(unittest.TestCase):
         self.assertIsInstance(self.controller.exports, ExportController)
         self.assertIsInstance(self.controller.presentation, PresentationController)
 
-    def test_legacy_app_controller_is_only_an_alias(self):
-        self.assertIs(AppController, WorkstationController)
-        source = inspect.getsource(WorkstationController)
-        self.assertNotIn("class WorkstationController(AppController)", source)
 
     def test_active_use_case_controllers_do_not_reference_retired_inspector(self):
         for controller_type in (

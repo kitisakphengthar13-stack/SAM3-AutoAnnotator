@@ -16,7 +16,8 @@ try:
         AnnotationSource,
         ImageStatus,
     )
-    from gui.controller import AppController, UiMode
+    from gui.controllers import WorkstationController
+    from gui.controllers.state import UiMode
     from gui.icons import ICONS, icon
     from gui.main_window import MainWindow
     from gui.tasks.inference_task_manager import TaskKind
@@ -108,8 +109,8 @@ if QApplication is not None:
         def set_last_directory(self, path):
             self.directory = str(path)
 
-        def save_window(self, window, splitter):
-            self.saved_window = (window, splitter)
+        def save_window(self, window):
+            self.saved_window = window
 
 
 @unittest.skipIf(QApplication is None, "PySide6 is not installed")
@@ -153,7 +154,7 @@ class GuiFieldTests(unittest.TestCase):
             return True
 
         window.confirm = confirm
-        controller = AppController(window, settings, task_manager=tasks)
+        controller = WorkstationController(window, settings, task_manager=tasks)
         self.windows.append(window)
         return window, controller, tasks, errors, infos, confirmations
 
