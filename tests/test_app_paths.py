@@ -1,7 +1,14 @@
 import unittest
 from pathlib import Path
 
-from app_paths import APP_HOME_ENV, user_data_dir
+from app_paths import (
+    APP_DATA_DIR,
+    APP_HOME_ENV,
+    MODELS_DIR,
+    OUTPUTS_DIR,
+    user_data_dir,
+)
+from logging_setup import LOG_DIR
 
 
 class AppPathTests(unittest.TestCase):
@@ -34,6 +41,14 @@ class AppPathTests(unittest.TestCase):
             home=Path("/home/fern"),
         )
         self.assertEqual(result, Path("/custom/sam3-home"))
+
+    def test_runtime_directories_share_the_application_home(self):
+        self.assertEqual(MODELS_DIR.parent, APP_DATA_DIR)
+        self.assertEqual(OUTPUTS_DIR.parent, APP_DATA_DIR)
+        self.assertEqual(LOG_DIR.parent, APP_DATA_DIR)
+        self.assertEqual(MODELS_DIR.name, "models")
+        self.assertEqual(OUTPUTS_DIR.name, "projects")
+        self.assertEqual(LOG_DIR.name, "logs")
 
 
 if __name__ == "__main__":
