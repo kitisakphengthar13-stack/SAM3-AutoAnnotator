@@ -87,8 +87,8 @@ status-bar surfaces. Project mutation algorithms do not belong there.
 Cross-widget transactions that genuinely need window surfaces live in
 `gui/coordinators/`:
 
-- `AnnotationHistoryCoordinator`: undo/redo capture, clean-index, and external-dirty
-  tracking;
+- `AnnotationHistoryCoordinator`: undo/redo transactions, clean-index, and external
+  mutation barriers;
 - `SetupDialogCoordinator`: staged Apply/Cancel setup transaction;
 - `ExportDialogCoordinator`: export preflight/result presentation.
 
@@ -152,20 +152,28 @@ occur after the explicit Export Now/Export Anyway action.
 
 ## Editing safety and undo
 
-Routine completed object edits are captured through `QUndoStack` using
-`ImageSnapshotCommand`. Add, move/resize, class change, exact-coordinate edit,
-reset, and delete are reversible. Single-object Delete is immediate rather than
-modal because Undo is the recovery path.
+`AnnotationController` owns the mutation boundary for reversible object edits. It
+captures history immediately before a service mutation and commits history
+immediately after that mutation succeeds. Undo correctness therefore does not depend
+on QAction connection order, canvas signal order, or a timer that observes the edit
+after the fact.
 
-The stack clean index represents the last saved/exported annotation state. Undoing
-back to that index clears the dirty marker. Mutations outside object-edit history
-(settings, review state, inference, imports, image metadata) are tracked separately
-as external dirty state, so Undo cannot falsely mark an externally changed project
-clean.
+`QUndoStack` stores `AnnotationSnapshotCommand` entries for add, move/resize, class
+change, exact-coordinate edit, reset, and delete. A command restores only annotation-
+owned image state: annotations, image status, and the related error message. It does
+not restore image path/name/index/size metadata. Before/after selection IDs are also
+stored so Undo and Redo restore the appropriate selection.
 
-Inference clears object-edit history before model-generated state replaces or
-re-segments annotations, preventing stale snapshots from crossing that mutation
-boundary.
+Single-object Delete is immediate rather than modal because Undo is the recovery
+path. The stack clean index represents the last saved/exported annotation state;
+Undoing back to that index clears the dirty marker when no non-undoable mutation has
+occurred.
+
+Non-undoable mutations are hard history barriers. Applied project settings, Review,
+YOLO import, inference results/errors, and other external project/image mutations
+clear older object-edit commands and keep the project dirty. Inference also clears
+history from the actual task-start signal, not from the Run/Re-segment QAction, so a
+failed attempt to start SAM3 does not discard valid Undo history.
 
 ## Commands and window semantics
 
