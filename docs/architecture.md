@@ -17,7 +17,7 @@ workflow define the persistent workstation.
 ```text
 src/
 |-- main.py                         # executable composition root
-|-- app_paths.py
+|-- app_paths.py                    # OS user-data locations
 |-- logging_setup.py
 |-- version.py
 |-- domain/
@@ -45,8 +45,7 @@ has no project-name wrapper package and no forwarding entrypoint.
 ## Application controller composition
 
 `src/main.py` is the executable composition root and constructs
-`WorkstationController`. The controller owns shared application state and wires the
-focused controllers:
+`WorkstationController`. The workstation object owns shared state and composes:
 
 ```text
 WorkstationController
@@ -62,13 +61,19 @@ Responsibilities are explicit:
 - `ProjectController`: open/create/load/save projects, staged project settings,
   model/output browsing, path memory, and YOLO import.
 - `AnnotationController`: object selection, rendering, manual boxes, class/box edits,
-  delete/reset, overlays, and review operations.
+  delete/reset, overlays, and Review & Next.
 - `InferenceController`: inference settings, run-current/run-pending/re-segmentation,
   task start/cancel/finish, and application of prediction/batch results.
 - `ExportController`: export, preview, output paths, and filesystem-facing export
-  presentation.
+  operations.
 - `PresentationController`: image loading, dataset-filter presentation, dirty/status
   context, action enablement policy, and GUI error reporting.
+
+Active QAction, view-signal, and task-signal routing targets the focused owner
+directly. It does not bounce through Workstation forwarding methods. Private
+compatibility forwarding methods have been removed; a small public compatibility
+surface remains only for legacy GUI-field tests and is not in the runtime signal
+path.
 
 `WorkstationController` does not inherit a monolithic controller. The retired
 `gui/controller.py`, `AppController`, Inspector API, and `ControllerSurfaceAdapter`
@@ -80,12 +85,18 @@ do not exist in the active tree.
 dialog containers, fullscreen/focus behavior, file pickers, native messages, and
 status-bar surfaces. Project mutation algorithms do not belong there.
 
-Cross-widget UI transactions live in `gui/coordinators/`:
+Cross-widget transactions that genuinely need window surfaces live in
+`gui/coordinators/`:
 
-- `AnnotationHistoryCoordinator`: undo/redo capture and replay boundaries;
-- `AnnotationInteractionCoordinator`: Review & Next follow-up;
+- `AnnotationHistoryCoordinator`: undo/redo capture, clean-index, and external-dirty
+  tracking;
 - `SetupDialogCoordinator`: staged Apply/Cancel setup transaction;
 - `ExportDialogCoordinator`: export preflight/result presentation.
+
+Review & Next is an annotation use case in `AnnotationController`, not a timer-based
+window coordinator. Setup captures its draft snapshot synchronously when the user
+opens the dialog. Export preflight is the single warning acknowledgement; the write
+operation does not ask the same question again through title-string bypass logic.
 
 Export-readiness rules live in `services/export_service.py`; the export dialog only
 presents those results. Setup/history coordinators call the focused controller that
@@ -147,6 +158,12 @@ Routine completed object edits are captured through `QUndoStack` using
 reset, and delete are reversible. Single-object Delete is immediate rather than
 modal because Undo is the recovery path.
 
+The stack clean index represents the last saved/exported annotation state. Undoing
+back to that index clears the dirty marker. Mutations outside object-edit history
+(settings, review state, inference, imports, image metadata) are tracked separately
+as external dirty state, so Undo cannot falsely mark an externally changed project
+clean.
+
 Inference clears object-edit history before model-generated state replaces or
 re-segments annotations, preventing stale snapshots from crossing that mutation
 boundary.
@@ -171,6 +188,19 @@ Images use `QAbstractListModel` plus `QSortFilterProxyModel`; annotations use
 SAM3 work remains off the GUI thread through worker `QObject` instances in
 `QThread`. Cancellation is cooperative; blocking model work must not move to the
 main thread.
+
+## Runtime data
+
+Source checkout and runtime data are separate. `src/app_paths.py` resolves a
+writable OS user-data home:
+
+- Windows: `%LOCALAPPDATA%\SAM3-AutoAnnotator`;
+- macOS: `~/Library/Application Support/SAM3-AutoAnnotator`;
+- Linux: `$XDG_DATA_HOME/sam3-autoannotator` or `~/.local/share/sam3-autoannotator`.
+
+`SAM3_AUTOANNOTATOR_HOME` is an explicit override. Automatic model discovery uses
+`<app-home>/models`; the default project destination uses `<app-home>/projects`.
+Neither path depends on the repository location.
 
 ## Persistent state and safety invariants
 
@@ -199,8 +229,8 @@ Automated architecture tests reject restoration of the retired repository shape:
 - no imports from the removed namespace;
 - no one-shot migration workflows left in the repository.
 
-Integration images live under `tests/fixtures/images/`. Generated `outputs/` and
-local model directories are runtime data ignored by Git.
+Integration images live under `tests/fixtures/images/`. Runtime model/project data
+lives outside the repository by default.
 
 ## Verification philosophy
 
