@@ -1,7 +1,10 @@
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QGraphicsItem,
+    QGraphicsSimpleTextItem,
     QGraphicsView,
     QHBoxLayout,
     QLabel,
@@ -19,7 +22,11 @@ from sam3_auto_annotator.gui.widgets.task_progress import TaskProgressWidget
 
 
 class WorkCanvas(ImageCanvas):
-    """Image canvas with workstation navigation that does not alter annotation data."""
+    """Annotation canvas with explicit workstation tools and navigation."""
+
+    def __init__(self, actions, parent=None):
+        super().__init__(parent)
+        self._actions = actions
 
     def zoom_in(self):
         self._zoom_by(1.2)
@@ -43,8 +50,58 @@ class WorkCanvas(ImageCanvas):
         self._auto_fit = False
         self.scale(factor, factor)
 
+    def set_select_mode(self, enabled):
+        if not enabled:
+            return
+        super().set_draw_mode(False)
+        self.setDragMode(QGraphicsView.NoDrag)
+        self.viewport().setCursor(Qt.ArrowCursor)
+
+    def set_pan_mode(self, enabled):
+        if enabled:
+            super().set_draw_mode(False)
+            self.setDragMode(QGraphicsView.ScrollHandDrag)
+            self.viewport().setCursor(Qt.OpenHandCursor)
+        elif not self._draw_mode:
+            self.setDragMode(QGraphicsView.NoDrag)
+            self.viewport().setCursor(Qt.ArrowCursor)
+
+    def set_draw_mode(self, enabled):
+        super().set_draw_mode(enabled)
+        if enabled:
+            self.setDragMode(QGraphicsView.NoDrag)
+            self.viewport().setCursor(Qt.CrossCursor)
+
+    def set_annotations(self, annotations):
+        super().set_annotations(annotations)
+        for annotation in annotations:
+            if annotation.deleted:
+                continue
+            box_item = self._items_by_id.get(annotation.id)
+            if box_item is None:
+                continue
+            confidence = (
+                "" if annotation.confidence is None else f"  {annotation.confidence:.2f}"
+            )
+            label = QGraphicsSimpleTextItem(
+                f"{annotation.class_name}{confidence}", box_item
+            )
+            label.setBrush(QBrush(QColor("#ffffff")))
+            label.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
+            label.setPos(2, -19)
+            label.setZValue(30)
+
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Space and not event.isAutoRepeat() and not self._draw_mode:
+        if event.key() == Qt.Key_Escape and not event.isAutoRepeat():
+            self._actions.select_tool.trigger()
+            event.accept()
+            return
+        if (
+            event.key() == Qt.Key_Space
+            and not event.isAutoRepeat()
+            and not self._actions.draw_box.isChecked()
+            and not self._actions.pan_tool.isChecked()
+        ):
             self.setDragMode(QGraphicsView.ScrollHandDrag)
             self.viewport().setCursor(Qt.OpenHandCursor)
             event.accept()
@@ -53,8 +110,14 @@ class WorkCanvas(ImageCanvas):
 
     def keyReleaseEvent(self, event):
         if event.key() == Qt.Key_Space and not event.isAutoRepeat():
-            self.setDragMode(QGraphicsView.NoDrag)
-            self.viewport().setCursor(Qt.CrossCursor if self._draw_mode else Qt.ArrowCursor)
+            if self._actions.pan_tool.isChecked():
+                self.setDragMode(QGraphicsView.ScrollHandDrag)
+                self.viewport().setCursor(Qt.OpenHandCursor)
+            else:
+                self.setDragMode(QGraphicsView.NoDrag)
+                self.viewport().setCursor(
+                    Qt.CrossCursor if self._actions.draw_box.isChecked() else Qt.ArrowCursor
+                )
             event.accept()
             return
         super().keyReleaseEvent(event)
@@ -78,12 +141,10 @@ class CanvasWorkspace(QWidget):
 
         command_row = QHBoxLayout()
         command_row.setSpacing(5)
-        self.canvas_hint = ElidedLabel(
-            "Open an image or folder to start reviewing annotations."
-        )
-        self.canvas_hint.setObjectName("canvasHint")
-        self.canvas_hint.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        command_row.addWidget(self.canvas_hint, 1)
+        command_row.addWidget(action_button(actions.select_tool))
+        command_row.addWidget(action_button(actions.pan_tool))
+        command_row.addWidget(action_button(actions.draw_box))
+        command_row.addSpacing(8)
 
         command_row.addWidget(QLabel("Class"))
         self.active_class_combo = QComboBox()
@@ -91,17 +152,23 @@ class CanvasWorkspace(QWidget):
         self.active_class_combo.setMinimumContentsLength(9)
         self.active_class_combo.setToolTip("Class assigned to the next box you draw.")
         command_row.addWidget(self.active_class_combo)
-        command_row.addWidget(action_button(actions.draw_box))
-        command_row.addSpacing(8)
+        command_row.addStretch(1)
+
         command_row.addWidget(action_button(actions.zoom_out, icon_only=True))
         command_row.addWidget(action_button(actions.actual_size))
         command_row.addWidget(action_button(actions.zoom_in, icon_only=True))
         command_row.addWidget(action_button(actions.fit))
         toolbar_layout.addLayout(command_row)
 
-        overlay_row = QHBoxLayout()
-        overlay_row.setSpacing(8)
-        overlay_row.addWidget(QLabel("Overlays"))
+        info_row = QHBoxLayout()
+        info_row.setSpacing(8)
+        self.canvas_hint = ElidedLabel(
+            "Open an image or folder to start reviewing annotations."
+        )
+        self.canvas_hint.setObjectName("canvasHint")
+        self.canvas_hint.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        info_row.addWidget(self.canvas_hint, 1)
+        info_row.addWidget(QLabel("Overlays"))
         self.show_boxes_check = _overlay_checkbox("Boxes", True)
         self.show_masks_check = _overlay_checkbox("Masks", True)
         self.show_polygons_check = _overlay_checkbox("Polygons", False)
@@ -110,21 +177,24 @@ class CanvasWorkspace(QWidget):
             self.show_masks_check,
             self.show_polygons_check,
         ):
-            overlay_row.addWidget(checkbox)
-        overlay_row.addStretch(1)
-        overlay_row.addWidget(action_button(actions.focus_workspace))
-        toolbar_layout.addLayout(overlay_row)
+            info_row.addWidget(checkbox)
+        info_row.addWidget(action_button(actions.focus_workspace))
+        toolbar_layout.addLayout(info_row)
         layout.addWidget(toolbar)
 
         self.workspace_stack = QStackedWidget()
         self.workspace_stack.setObjectName("canvasStack")
         self.empty_state = EmptyStateWidget()
         self.image_load_error = ImageLoadErrorWidget()
-        self.canvas = WorkCanvas()
+        self.canvas = WorkCanvas(actions)
         self.workspace_stack.addWidget(self.empty_state)
         self.workspace_stack.addWidget(self.image_load_error)
         self.workspace_stack.addWidget(self.canvas)
         layout.addWidget(self.workspace_stack, 1)
+
+        actions.select_tool.toggled.connect(self.canvas.set_select_mode)
+        actions.pan_tool.toggled.connect(self.canvas.set_pan_mode)
+        self.canvas.set_select_mode(True)
 
         self.task_progress = TaskProgressWidget(actions.cancel_batch)
         layout.addWidget(self.task_progress)
