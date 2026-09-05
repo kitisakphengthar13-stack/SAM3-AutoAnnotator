@@ -37,6 +37,8 @@ ICON_SPECS = {
     "results": IconSpec(resource="results.svg"),
     "preview": IconSpec(QIcon.ThemeIcon.DocumentPrintPreview, QStyle.SP_FileDialogContentsView),
     "reviewed": IconSpec(QIcon.ThemeIcon.MailMarkRead, QStyle.SP_DialogApplyButton),
+    "undo": IconSpec(QIcon.ThemeIcon.EditUndo, QStyle.SP_ArrowBack),
+    "redo": IconSpec(QIcon.ThemeIcon.EditRedo, QStyle.SP_ArrowForward),
     "reset": IconSpec(QIcon.ThemeIcon.EditUndo, QStyle.SP_ArrowBack),
     "warning": IconSpec(QIcon.ThemeIcon.DialogWarning, QStyle.SP_MessageBoxWarning),
     "previous": IconSpec(QIcon.ThemeIcon.GoPrevious, QStyle.SP_ArrowBack),
