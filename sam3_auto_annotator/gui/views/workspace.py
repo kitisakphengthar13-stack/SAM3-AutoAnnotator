@@ -1,20 +1,14 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QHBoxLayout,
     QLabel,
-    QSplitter,
     QStackedWidget,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from sam3_auto_annotator.gui.icons import ICONS, icon
-from sam3_auto_annotator.gui.views.annotation_panel import AnnotationPanel
-from sam3_auto_annotator.gui.views.dataset_panel import DatasetPanel
-from sam3_auto_annotator.gui.views.results_panel import ResultsPanel
-from sam3_auto_annotator.gui.views.setup_panel import SetupPanel
 from sam3_auto_annotator.gui.widgets.action_button import action_button
 from sam3_auto_annotator.gui.widgets.elided_label import ElidedLabel
 from sam3_auto_annotator.gui.widgets.empty_state import EmptyStateWidget
@@ -24,6 +18,8 @@ from sam3_auto_annotator.gui.widgets.task_progress import TaskProgressWidget
 
 
 class CanvasWorkspace(QWidget):
+    """Primary work surface. Project/configuration UI must not steal canvas space."""
+
     def __init__(self, actions, parent=None):
         super().__init__(parent)
         self.setObjectName("canvasWorkspace")
@@ -31,24 +27,37 @@ class CanvasWorkspace(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        canvas_bar = QWidget()
-        canvas_bar.setObjectName("canvasBar")
-        bar_layout = QVBoxLayout(canvas_bar)
-        bar_layout.setContentsMargins(10, 6, 8, 6)
-        bar_layout.setSpacing(4)
+        toolbar = QWidget()
+        toolbar.setObjectName("canvasBar")
+        toolbar_layout = QVBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(10, 7, 10, 7)
+        toolbar_layout.setSpacing(6)
 
-        context_row = QHBoxLayout()
+        command_row = QHBoxLayout()
+        command_row.setSpacing(5)
         self.canvas_hint = ElidedLabel(
             "Open an image or folder to start reviewing annotations."
         )
         self.canvas_hint.setObjectName("canvasHint")
         self.canvas_hint.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        context_row.addWidget(self.canvas_hint, 1)
-        context_row.addWidget(action_button(actions.draw_box, icon_only=True))
-        context_row.addWidget(action_button(actions.fit, icon_only=True))
-        bar_layout.addLayout(context_row)
+        command_row.addWidget(self.canvas_hint, 1)
+
+        command_row.addWidget(QLabel("Class"))
+        self.active_class_combo = QComboBox()
+        self.active_class_combo.setObjectName("activeClassCombo")
+        self.active_class_combo.setMinimumContentsLength(9)
+        self.active_class_combo.setToolTip("Class assigned to the next box you draw.")
+        command_row.addWidget(self.active_class_combo)
+        command_row.addWidget(action_button(actions.draw_box))
+        command_row.addSpacing(8)
+        command_row.addWidget(action_button(actions.zoom_out, icon_only=True))
+        command_row.addWidget(action_button(actions.actual_size))
+        command_row.addWidget(action_button(actions.zoom_in, icon_only=True))
+        command_row.addWidget(action_button(actions.fit))
+        toolbar_layout.addLayout(command_row)
 
         overlay_row = QHBoxLayout()
+        overlay_row.setSpacing(8)
         overlay_row.addWidget(QLabel("Overlays"))
         self.show_boxes_check = _overlay_checkbox("Boxes", True)
         self.show_masks_check = _overlay_checkbox("Masks", True)
@@ -60,8 +69,9 @@ class CanvasWorkspace(QWidget):
         ):
             overlay_row.addWidget(checkbox)
         overlay_row.addStretch(1)
-        bar_layout.addLayout(overlay_row)
-        layout.addWidget(canvas_bar)
+        overlay_row.addWidget(action_button(actions.focus_workspace))
+        toolbar_layout.addLayout(overlay_row)
+        layout.addWidget(toolbar)
 
         self.workspace_stack = QStackedWidget()
         self.workspace_stack.setObjectName("canvasStack")
@@ -76,37 +86,21 @@ class CanvasWorkspace(QWidget):
         self.task_progress = TaskProgressWidget(actions.cancel_batch)
         layout.addWidget(self.task_progress)
 
-
-class InspectorPanel(QTabWidget):
-    def __init__(self, actions, parent=None):
-        super().__init__(parent)
-        self.setObjectName("inspectorTabs")
-        self.setDocumentMode(True)
-        self.setMinimumWidth(260)
-        self.setup = SetupPanel(actions)
-        self.annotation = AnnotationPanel(actions)
-        self.results = ResultsPanel(actions)
-        self.addTab(self.setup, icon(ICONS["setup"], "#475569", 0.85), "Setup")
-        self.addTab(self.annotation, icon(ICONS["annotate"], "#475569", 0.85), "Review")
-        self.addTab(self.results, icon(ICONS["results"], "#475569", 0.85), "Export")
-
-
-class AnnotationWorkspace(QSplitter):
-    def __init__(self, actions, parent=None):
-        super().__init__(Qt.Horizontal, parent)
-        self.setObjectName("workspaceRoot")
-        self.setChildrenCollapsible(False)
-        self.setHandleWidth(5)
-        self.dataset = DatasetPanel(actions)
-        self.canvas_area = CanvasWorkspace(actions)
-        self.inspector = InspectorPanel(actions)
-        self.addWidget(self.dataset)
-        self.addWidget(self.canvas_area)
-        self.addWidget(self.inspector)
-        self.setStretchFactor(0, 0)
-        self.setStretchFactor(1, 1)
-        self.setStretchFactor(2, 0)
-        self.setSizes([220, 760, 320])
+    def set_classes(self, prompts):
+        current = self.active_class_combo.currentText()
+        self.active_class_combo.blockSignals(True)
+        try:
+            self.active_class_combo.clear()
+            self.active_class_combo.addItems(list(prompts))
+            index = self.active_class_combo.findText(current)
+            if index >= 0:
+                self.active_class_combo.setCurrentIndex(index)
+        finally:
+            self.active_class_combo.blockSignals(False)
+        self.active_class_combo.setToolTip(
+            "Class assigned to the next box you draw: "
+            + (self.active_class_combo.currentText() or "none")
+        )
 
 
 def _overlay_checkbox(text, checked):
