@@ -1,68 +1,75 @@
 # UI audit
 
-## Scope
+## Product contract
 
-This audit covers the PySide6 GUI launched by `main.py`: information hierarchy,
-widget ownership, action state, resizing, overflow, error presentation, icons,
-and keyboard-visible state. Runtime test results are recorded separately in
-[Verification](verification.md).
+SAM3 AutoAnnotator is an annotation workstation. The dominant repeated task is:
 
-## Resolved findings
+```text
+inspect image -> select/create object -> correct annotation -> review -> next image
+```
 
-### P0 — state and data integrity
+The canvas is therefore the primary work surface. Project configuration and export
+are transient workflows and must not permanently consume canvas width.
 
-- A failed image decode clears image-owned graphics and shows a recoverable
-  inline error with **Retry**; a previous image cannot remain as stale content.
-- Applying an unchanged box or class is a no-op and cannot invalidate a valid
-  polygon or mark the project dirty.
-- Controller, canvas, and annotation-table selection are synchronized, and
-  project replacement clears project-specific preview, progress, filters,
-  selection, and draw state.
+## Layout contract
 
-### P1 — workflow and layout
+- The image canvas is the `QMainWindow` central widget.
+- Dataset navigation is a left `QDockWidget` that can be hidden, moved, or floated.
+- Object review/editing is a right `QDockWidget` that can be hidden, moved, or floated.
+- Setup is a separate project-configuration dialog, not a permanent inspector tab.
+- Export/result details are a separate dialog, not a permanent inspector tab.
+- **Focus Workspace** hides both side docks and restores their prior visibility.
+- **Fullscreen** is a real window command (`F11`) and is independent of image **Fit**.
+- Window state persists through `QMainWindow.saveState()` so dock layout is restored by Qt.
 
-- The Inspector follows the task vocabulary: **Setup**, **Review**, **Export**.
-- The command bar holds global open/save actions. Context actions live with the
-  content they affect: prediction in Setup, editing in Review, overlays at the
-  canvas, and artifacts in Export.
-- Each surface has at most one emphasized primary action.
-- **Run Pending (N)** communicates its exact scope and is disabled at zero.
-  Navigation, review, reset, and apply actions are likewise disabled when their
-  result is already known to be a no-op.
-- Setup and Export pin their action footers while their content scrolls. Review
-  scrolls its editor independently so the annotation table retains useful
-  height.
-- Long paths, project/image names, and task/status messages elide inside their
-  owning widget and expose the full value through a tooltip. They do not resize
-  sibling splitter panels.
+The retired three-way `Dataset | Canvas | Inspector` splitter is not an acceptance
+requirement and must not be recreated merely to preserve historical structure.
 
-### P2 — visual language
+## Annotation throughput contract
 
-- Icons are semantic and native-first: Qt theme icons, then Qt style fallbacks,
-  with bundled SVGs only for draw-box and workflow concepts that Qt does not
-  represent consistently.
-- Text, icon, color, enabled state, hover/pressed/checked state, and keyboard
-  focus work together; icon or color alone never carries essential meaning.
-- Success stays in persistent status/results surfaces; blocking decisions and
-  recoverable failures receive explicit actions.
+- The class assigned to the next manually drawn box is visible beside **Draw Box**.
+  Drawing must never depend on a class selector hidden in another surface.
+- Canvas navigation exposes Zoom Out, 100%, Zoom In, and Fit as separate commands.
+- Holding Space temporarily enables hand panning without changing annotation data.
+- **Review & Next** marks the image reviewed and advances when another visible image
+  is available.
+- Side panels may be closed without making the canvas unusable.
+- Overlay visibility remains local to the canvas.
+- Prediction progress remains adjacent to the canvas where results are reviewed.
 
-## Acceptance matrix
+## State and data integrity
 
-The supported window sizes are:
+The redesign does not weaken domain rules:
 
-- `960 x 620` — minimum usable layout;
-- `1360 x 840` — reference working layout.
+- a failed image decode clears image-owned graphics before showing recovery UI;
+- unchanged box/class submissions remain no-ops;
+- edited geometry/class invalidates stale segmentation;
+- project replacement clears project-specific selection and transient results;
+- pending batch prediction does not overwrite edited/reviewed work;
+- saved project state remains the editable source of truth for export.
 
-At both sizes, acceptance covers empty, configured, busy, completed, corrupt
-image, long-content, and filtered-dataset states. Required invariants are:
+## Interaction semantics
 
-- no horizontal overflow in inspector content;
-- pinned Setup and Export footers remain visible;
-- the Review table retains usable height;
-- long content does not alter splitter proportions;
-- the current primary action and recovery path remain visible;
-- focus, disabled, selection, and checked states remain distinguishable.
+- Fit means fit the image to the current canvas viewport; it must not use a maximize
+  window semantic.
+- Fullscreen means fullscreen application workspace.
+- Draw mode, selected object, disabled actions, and running tasks must have visible
+  state beyond color alone.
+- Configuration errors belong with Setup. Image-load failures belong on the canvas.
+  Destructive project-level decisions may use modal confirmation.
 
-Screenshots support this review but are not treated as the sole evidence of
-behavior. Repeatable test commands and actual results remain in
-[Verification](verification.md).
+## Acceptance sizes
+
+The minimum supported window remains `960 x 620`; `1360 x 840` is the reference
+working size. Acceptance is outcome based rather than panel-width based:
+
+- the canvas remains usable at both sizes;
+- Dataset and Objects can be independently hidden and restored;
+- Focus Workspace produces a canvas-dominant layout;
+- Setup and Export do not force the central canvas narrower;
+- long paths/status text do not increase the main-window minimum width;
+- maximize, fullscreen, Fit, 100%, and zoom commands remain semantically distinct.
+
+Automated UI tests must verify these behaviors without asserting the retired
+splitter hierarchy. Visible Windows testing is still required for native title-bar,
+dock, DPI, and fullscreen behavior.
