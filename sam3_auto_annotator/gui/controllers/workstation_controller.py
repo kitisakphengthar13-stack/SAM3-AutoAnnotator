@@ -3,6 +3,7 @@ from __future__ import annotations
 from sam3_auto_annotator.gui.controller import AppController
 from sam3_auto_annotator.gui.controllers.annotation_controller import AnnotationController
 from sam3_auto_annotator.gui.controllers.export_controller import ExportController
+from sam3_auto_annotator.gui.controllers.project_controller import ProjectController
 
 
 class WorkstationController(AppController):
@@ -15,8 +16,16 @@ class WorkstationController(AppController):
 
     def __init__(self, *args, **kwargs):
         self.annotations = AnnotationController(self)
+        self.projects = ProjectController(self)
         self.exports = ExportController(self)
         super().__init__(*args, **kwargs)
+
+    # Project workflow ----------------------------------------------------
+    def _load_project(self, project, state_path=None):
+        return self.projects.load_project(project, state_path)
+
+    def import_yolo(self):
+        return self.projects.import_yolo()
 
     # Annotation workflow -------------------------------------------------
     def _render_current_annotations(self, select_id=None):
