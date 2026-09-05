@@ -146,40 +146,16 @@ class WorkstationController(QObject):
         annotation = image.annotation_by_id(self.selected_annotation_id)
         return annotation if annotation is not None and annotation.is_active else None
 
-    # Public façade kept for external/test callers while active runtime signals
-    # route directly to the focused controller that owns each use case.
+    # Remaining compatibility surface used only by the legacy GUI field tests.
+    # Runtime signals above do not route through these methods.
     def open_image(self):
         return self.projects.open_image()
-
-    def open_folder(self):
-        return self.projects.open_folder()
-
-    def open_project(self):
-        return self.projects.open_project()
-
-    def import_yolo(self):
-        return self.projects.import_yolo()
-
-    def save_project(self):
-        return self.projects.save_project()
-
-    def select_image(self, image_index):
-        return self.presentation.select_image(image_index)
-
-    def dataset_filter_changed(self):
-        return self.presentation.dataset_filter_changed()
 
     def load_current_image(self):
         return self.presentation.load_current_image()
 
     def select_annotation(self, annotation_id):
         return self.annotations.select_annotation(annotation_id)
-
-    def update_overlays(self):
-        return self.annotations.update_overlays()
-
-    def add_manual_box(self, box_xyxy):
-        return self.annotations.add_manual_box(box_xyxy)
 
     def canvas_box_changed(self, annotation_id, box_xyxy):
         return self.annotations.canvas_box_changed(annotation_id, box_xyxy)
@@ -190,38 +166,11 @@ class WorkstationController(QObject):
     def apply_selected_class(self):
         return self.annotations.apply_selected_class()
 
-    def delete_selected(self):
-        return self.annotations.delete_selected()
-
-    def reset_selected(self):
-        return self.annotations.reset_selected()
-
-    def mark_current_reviewed(self):
-        return self.annotations.mark_current_reviewed()
-
     def run_current(self):
         return self.inference.run_current()
 
-    def run_remaining(self):
-        return self.inference.run_remaining()
-
     def resegment_selected(self):
         return self.inference.resegment_selected()
-
-    def cancel_task(self):
-        return self.inference.cancel_task()
-
-    def export_labels(self):
-        return self.exports.export_labels()
-
-    def save_preview(self, silent=False):
-        return self.exports.save_preview(silent=silent)
-
-    def open_preview(self):
-        return self.exports.open_preview()
-
-    def open_output(self):
-        return self.exports.open_output()
 
     def handle_close_event(self, event):
         if self.tasks.is_running:
