@@ -6,7 +6,7 @@ from PIL import Image
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication
 
-from sam3_auto_annotator.gui.controller import AppController, UiMode
+from sam3_auto_annotator.gui.controllers import UiMode, WorkstationController
 from sam3_auto_annotator.gui.main_window import MainWindow
 from sam3_auto_annotator.services.annotation_service import add_manual_annotation
 from sam3_auto_annotator.services.project_service import create_project
@@ -77,7 +77,7 @@ class GuiControllerTests(unittest.TestCase):
             (args, kwargs)
         )
         self.window.show_info = lambda *_args, **_kwargs: None
-        self.controller = AppController(
+        self.controller = WorkstationController(
             self.window,
             MemorySettings(),
             task_manager=self.tasks,
@@ -138,8 +138,6 @@ class GuiControllerTests(unittest.TestCase):
 
         self.window.setup.prompts_edit.setPlainText("truck")
 
-        # Typing is only a draft. Existing project data and enabled workflow stay
-        # untouched until Apply requests validation.
         self.assertEqual(self.controller.project.prompts, ["car"])
         self.assertEqual(self.window.annotation.class_combo.itemText(0), "car")
         self.assertTrue(self.window.setup.prompt_validation_label.isHidden())
