@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
 from gui.actions import AppActions
 from gui.coordinators import (
     AnnotationHistoryCoordinator,
-    AnnotationInteractionCoordinator,
     ExportDialogCoordinator,
     SetupDialogCoordinator,
 )
@@ -86,7 +85,6 @@ class MainWindow(QMainWindow):
         self.results_dialog = self._dialog("Export", self.results, 500, 680)
         self.results_dialog.setWindowModality(Qt.WindowModal)
 
-        self.annotation_interaction = AnnotationInteractionCoordinator(self)
         self.history = AnnotationHistoryCoordinator(self)
         self.undo_stack = self.history.stack
         self.setup_flow = SetupDialogCoordinator(self)
