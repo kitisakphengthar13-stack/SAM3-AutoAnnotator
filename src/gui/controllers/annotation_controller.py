@@ -31,8 +31,8 @@ class AnnotationController:
         self.update_canvas_hint()
         if select_id:
             self.select_annotation(select_id)
-        host._update_actions()
-        host._update_context()
+        host.presentation.update_actions()
+        host.presentation.update_context()
 
     def select_annotation(self, annotation_id):
         host = self.host
@@ -47,7 +47,7 @@ class AnnotationController:
         )
         if annotation is None or not annotation.is_active:
             self.clear_selection()
-            host._update_actions()
+            host.presentation.update_actions()
             return
 
         host._selecting = True
@@ -61,7 +61,7 @@ class AnnotationController:
             host.view.show_review()
         finally:
             host._selecting = False
-        host._update_actions()
+        host.presentation.update_actions()
 
     def clear_selection(self):
         host = self.host
@@ -117,7 +117,7 @@ class AnnotationController:
         if image is None:
             return
         try:
-            prompts = host._sync_project_settings(require_prompts=True)
+            prompts = host.projects.sync_project_settings(require_prompts=True)
         except Exception as exc:
             host.view.show_error(
                 "Class Required",
@@ -145,7 +145,7 @@ class AnnotationController:
             self.after_annotation_change(annotation.id)
             host.view.set_message("Manual annotation added.")
         except Exception as exc:
-            host._report_error(
+            host.presentation.report_error(
                 "Could Not Add Annotation",
                 "The bounding box could not be added.",
                 "Draw a box fully inside the image and retry.",
@@ -167,7 +167,7 @@ class AnnotationController:
                 "Box updated. Re-segment it before segmentation export."
             )
         except Exception as exc:
-            host._report_error(
+            host.presentation.report_error(
                 "Could Not Update Box",
                 "The bounding box could not be updated.",
                 "Check the coordinates and keep the box inside the image.",
@@ -182,7 +182,7 @@ class AnnotationController:
             return
         try:
             values = host.view.annotation.box_values()
-            if not host._box_fields_changed(annotation, values):
+            if not host.presentation.box_fields_changed(annotation, values):
                 return
             edit_annotation_box(image, annotation.id, values)
             self.after_annotation_change(annotation.id)
@@ -190,7 +190,7 @@ class AnnotationController:
                 "Box updated. Re-segment it before segmentation export."
             )
         except Exception as exc:
-            host._report_error(
+            host.presentation.report_error(
                 "Invalid Box Coordinates",
                 "The box coordinates are not valid.",
                 "Use x1 < x2 and y1 < y2 within the image bounds.",
@@ -214,7 +214,7 @@ class AnnotationController:
                 "Class updated. Re-segment it before segmentation export."
             )
         except Exception as exc:
-            host._report_error(
+            host.presentation.report_error(
                 "Could Not Change Class",
                 "The selected class could not be applied.",
                 "Check the class list in Setup and retry.",
@@ -242,7 +242,7 @@ class AnnotationController:
             self.after_annotation_change(annotation.id)
             host.view.set_message("Original SAM3 annotation restored.")
         except Exception as exc:
-            host._report_error(
+            host.presentation.report_error(
                 "Could Not Reset Annotation",
                 "This annotation has no restorable SAM3 geometry.",
                 "Keep the current edit or run SAM3 again on the image.",
@@ -253,17 +253,33 @@ class AnnotationController:
         host = self.host
         image = host.current_image
         if image is None or image.status == ImageStatus.REVIEWED:
-            return
+            return False
         mark_image_reviewed(image)
-        host._mark_dirty(refresh=False)
+        host.presentation.mark_dirty(refresh=False)
         host.view.dataset.refresh(image.image_index)
         host.view.set_message("Image marked as reviewed.")
-        host.dataset_filter_changed()
+        host.presentation.dataset_filter_changed()
+        return True
+
+    def review_current_and_select_next(self):
+        host = self.host
+        image = host.current_image
+        if image is None:
+            return
+        reviewed_index = image.image_index
+        if not self.mark_current_reviewed():
+            return
+        # Needs-Review filtering may already move selection when the reviewed
+        # image disappears. Advance only when the same image remains selected.
+        if host.current_image_index != reviewed_index:
+            return
+        if host.view.actions.next_image.isEnabled():
+            host.view.dataset.select_relative(1)
 
     def after_annotation_change(self, select_id=None):
         host = self.host
         image = host.current_image
-        host._mark_dirty(refresh=False)
+        host.presentation.mark_dirty(refresh=False)
         if image is not None:
             host.view.dataset.refresh(image.image_index)
         self.render_current_annotations(select_id)
