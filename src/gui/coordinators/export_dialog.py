@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from services.export_service import evaluate_export_readiness
+
 
 class ExportDialogCoordinator:
-    """Build and present export readiness without mutating project data."""
+    """Present export readiness without owning export rules or writing files."""
 
     def __init__(self, window):
         self.window = window
@@ -13,38 +15,23 @@ class ExportDialogCoordinator:
         if project is None:
             return
 
-        images = list(project.images)
-        reviewed = sum(
-            getattr(image.status, "value", image.status) == "reviewed"
-            for image in images
-        )
-        incomplete = sum(
-            getattr(image.status, "value", image.status) in {"not_predicted", "error"}
-            for image in images
-        )
-        stale_segmentation = sum(
-            1
-            for image in images
-            for annotation in image.active_annotations
-            if not annotation.segmentation_valid
-        )
-        needs_review = len(images) - reviewed
-        warning = needs_review > 0 or incomplete > 0 or stale_segmentation > 0
-
+        readiness = evaluate_export_readiness(project)
         self.window.results.set_status(
             "Review export warnings before writing files."
-            if warning
+            if readiness.has_warnings
             else "Project is ready to export.",
             "\n".join(
                 (
-                    f"Reviewed images: {reviewed}/{len(images)}",
-                    f"Needs review: {needs_review}",
-                    f"Unpredicted / failed: {incomplete}",
-                    f"Stale / missing segmentation: {stale_segmentation}",
+                    f"Reviewed images: {readiness.reviewed_images}/{readiness.total_images}",
+                    f"Needs review: {readiness.needs_review}",
+                    f"Unpredicted / failed: {readiness.incomplete_images}",
+                    f"Stale / missing segmentation: {readiness.stale_segmentations}",
                 )
             ),
         )
-        self.window.actions.export.setText("Export Anyway" if warning else "Export Now")
+        self.window.actions.export.setText(
+            "Export Anyway" if readiness.has_warnings else "Export Now"
+        )
         self.show_results()
 
     def show_results(self):

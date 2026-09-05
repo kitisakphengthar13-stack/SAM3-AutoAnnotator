@@ -1,15 +1,59 @@
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from services.export_rows import build_box_rows, image_paths_for_export
 from domain.segmentation import (
     build_segmentation_rows,
     build_skipped_segmentation_rows,
 )
+from services.export_rows import build_box_rows, image_paths_for_export
 from storage.exporters.csv_exporter import BOX_FIELDS, write_csv
+from storage.exporters.summary_writer import save_run_summary
 from storage.exporters.yolo_exporter import write_yolo_labels
 from storage.image_catalog import BOX_CSV_NAME
-from storage.exporters.summary_writer import save_run_summary
+
+
+@dataclass(frozen=True)
+class ExportReadiness:
+    total_images: int
+    reviewed_images: int
+    needs_review: int
+    incomplete_images: int
+    stale_segmentations: int
+
+    @property
+    def has_warnings(self):
+        return bool(
+            self.needs_review
+            or self.incomplete_images
+            or self.stale_segmentations
+        )
+
+
+def evaluate_export_readiness(project_state):
+    """Return export readiness facts without presenting UI or writing files."""
+    images = list(project_state.images)
+    reviewed = sum(
+        getattr(image.status, "value", image.status) == "reviewed"
+        for image in images
+    )
+    incomplete = sum(
+        getattr(image.status, "value", image.status) in {"not_predicted", "error"}
+        for image in images
+    )
+    stale = sum(
+        1
+        for image in images
+        for annotation in image.active_annotations
+        if not annotation.segmentation_valid
+    )
+    return ExportReadiness(
+        total_images=len(images),
+        reviewed_images=reviewed,
+        needs_review=len(images) - reviewed,
+        incomplete_images=incomplete,
+        stale_segmentations=stale,
+    )
 
 
 def export_corrected_detection(project_state, output_dir, write_summary=True):
