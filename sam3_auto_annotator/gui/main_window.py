@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt, QUrl
+from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from sam3_auto_annotator.gui.actions import AppActions
 from sam3_auto_annotator.gui.coordinators import (
     AnnotationHistoryCoordinator,
+    AnnotationInteractionCoordinator,
     ExportDialogCoordinator,
     SetupDialogCoordinator,
 )
@@ -87,6 +88,9 @@ class MainWindow(QMainWindow):
         self.results_dialog = self._dialog("Export", self.results, 500, 680)
         self.results_dialog.setWindowModality(Qt.WindowModal)
 
+        # Interaction connects first so visible active-class state is prepared
+        # before history capture and the legacy controller receive a draw signal.
+        self.annotation_interaction = AnnotationInteractionCoordinator(self)
         self.history = AnnotationHistoryCoordinator(self)
         self.undo_stack = self.history.stack
         self.setup_flow = SetupDialogCoordinator(self)
@@ -103,9 +107,6 @@ class MainWindow(QMainWindow):
         self.actions.actual_size.triggered.connect(self.canvas.actual_size)
         self.actions.focus_workspace.toggled.connect(self.set_focus_workspace)
         self.actions.fullscreen.toggled.connect(self.set_fullscreen)
-        self.actions.mark_reviewed.triggered.connect(
-            lambda: QTimer.singleShot(0, self._advance_after_review)
-        )
         self._set_canvas_navigation_enabled(False)
 
         self.setStatusBar(QStatusBar(self))
@@ -187,15 +188,6 @@ class MainWindow(QMainWindow):
             self.showMaximized()
         else:
             self.showNormal()
-
-    def _advance_after_review(self):
-        if self.controller is None:
-            return
-        image = self.controller.current_image
-        if image is None or getattr(image.status, "value", None) != "reviewed":
-            return
-        if self.actions.next_image.isEnabled():
-            self.dataset.select_relative(1)
 
     def _set_canvas_navigation_enabled(self, enabled):
         for action in (
