@@ -65,6 +65,7 @@ class MainWindow(QMainWindow):
         self._fullscreen_restore_maximized = False
         self._undo_project = None
         self._pending_undo_capture = None
+        self._draw_class_restore = None
 
         self.actions = AppActions(self)
         self.undo_stack = QUndoStack(self)
@@ -87,10 +88,17 @@ class MainWindow(QMainWindow):
         )
         self.annotation.setMinimumWidth(280)
 
+        # Reuse the same class list, but deliberately keep the drawing class and
+        # selected-object class as independent selections.
         self.canvas_area.active_class_combo.setModel(self.annotation.class_combo.model())
-        self.canvas_area.active_class_combo.currentIndexChanged.connect(
-            self.annotation.class_combo.setCurrentIndex
-        )
+
+        self.view_menu.addSeparator()
+        dataset_toggle = self.dataset_dock.toggleViewAction()
+        dataset_toggle.setText("Dataset Panel")
+        objects_toggle = self.annotation_dock.toggleViewAction()
+        objects_toggle.setText("Objects Panel")
+        self.view_menu.addAction(dataset_toggle)
+        self.view_menu.addAction(objects_toggle)
 
         self.setup = SetupPanel(self.actions)
         self.setup_dialog = self._dialog("Project Setup", self.setup, 430, 650)
@@ -171,6 +179,9 @@ class MainWindow(QMainWindow):
                 lambda _checked=False, label=text: self._begin_undoable_edit(label)
             )
 
+        # These slots are connected before AppController, so the hidden legacy
+        # class reader sees the visible active class only for the draw operation.
+        self.canvas.box_drawn.connect(self._prepare_active_class_for_draw)
         self.canvas.box_drawn.connect(
             lambda _box: self._begin_undoable_edit("Add annotation")
         )
@@ -187,6 +198,28 @@ class MainWindow(QMainWindow):
                     0, self._clear_undo_if_inference_started
                 )
             )
+
+    def _prepare_active_class_for_draw(self, _box):
+        controller = self.controller
+        image = controller.current_image if controller is not None else None
+        if image is None:
+            return
+        previous_index = self.annotation.class_combo.currentIndex()
+        previous_count = len(image.annotations)
+        self.annotation.class_combo.setCurrentIndex(
+            self.canvas_area.active_class_combo.currentIndex()
+        )
+        self._draw_class_restore = (image, previous_count, previous_index)
+        QTimer.singleShot(0, self._restore_draw_class_if_failed)
+
+    def _restore_draw_class_if_failed(self):
+        restore = self._draw_class_restore
+        self._draw_class_restore = None
+        if restore is None or self.controller is None:
+            return
+        image, previous_count, previous_index = restore
+        if self.controller.current_image is image and len(image.annotations) == previous_count:
+            self.annotation.class_combo.setCurrentIndex(previous_index)
 
     def _begin_undoable_edit(self, text):
         controller = self.controller
