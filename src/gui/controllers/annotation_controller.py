@@ -135,6 +135,7 @@ class AnnotationController:
             )
             return
 
+        capture = host.view.history.capture_edit("Add annotation")
         try:
             annotation = add_manual_annotation(
                 image,
@@ -142,6 +143,7 @@ class AnnotationController:
                 prompts[class_id],
                 box_xyxy,
             )
+            host.view.history.commit_edit(capture, annotation.id)
             self.after_annotation_change(annotation.id)
             host.view.set_message("Manual annotation added.")
         except Exception as exc:
@@ -160,8 +162,10 @@ class AnnotationController:
             return
         if all(abs(old - new) < 0.5 for old, new in zip(annotation.box_xyxy, box_xyxy)):
             return
+        capture = host.view.history.capture_edit("Edit box")
         try:
             edit_annotation_box(image, annotation_id, box_xyxy)
+            host.view.history.commit_edit(capture, annotation_id)
             self.after_annotation_change(annotation_id)
             host.view.set_message(
                 "Box updated. Re-segment it before segmentation export."
@@ -184,7 +188,9 @@ class AnnotationController:
             values = host.view.annotation.box_values()
             if not host.presentation.box_fields_changed(annotation, values):
                 return
+            capture = host.view.history.capture_edit("Edit box")
             edit_annotation_box(image, annotation.id, values)
+            host.view.history.commit_edit(capture, annotation.id)
             self.after_annotation_change(annotation.id)
             host.view.set_message(
                 "Box updated. Re-segment it before segmentation export."
@@ -207,8 +213,10 @@ class AnnotationController:
             return
         if annotation.class_id == class_id and annotation.class_name == class_name:
             return
+        capture = host.view.history.capture_edit("Change class")
         try:
             change_annotation_class(image, annotation.id, class_id, class_name)
+            host.view.history.commit_edit(capture, annotation.id)
             self.after_annotation_change(annotation.id)
             host.view.set_message(
                 "Class updated. Re-segment it before segmentation export."
@@ -227,7 +235,9 @@ class AnnotationController:
         image = host.current_image
         if annotation is None or image is None:
             return
+        capture = host.view.history.capture_edit("Delete annotation")
         delete_annotation(image, annotation.id)
+        host.view.history.commit_edit(capture)
         self.after_annotation_change()
         host.view.set_message("Annotation deleted. Use Undo to restore it.")
 
@@ -237,8 +247,10 @@ class AnnotationController:
         image = host.current_image
         if annotation is None or image is None or not annotation.is_modified_from_sam3:
             return
+        capture = host.view.history.capture_edit("Reset annotation")
         try:
             reset_annotation_to_sam3(image, annotation.id)
+            host.view.history.commit_edit(capture, annotation.id)
             self.after_annotation_change(annotation.id)
             host.view.set_message("Original SAM3 annotation restored.")
         except Exception as exc:
