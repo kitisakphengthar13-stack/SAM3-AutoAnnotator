@@ -98,7 +98,7 @@ class GuiCoordinatorBoundaryTests(unittest.TestCase):
 
     def test_main_window_source_does_not_reimplement_workflow_algorithms(self):
         source = inspect.getsource(MainWindow)
-        self.assertNotIn("ImageSnapshotCommand", source)
+        self.assertNotIn("AnnotationSnapshotCommand", source)
         self.assertNotIn("parse_prompts", source)
         self.assertNotIn("stale_segmentation = sum", source)
         self.assertNotIn("_advance_after_review", source)
