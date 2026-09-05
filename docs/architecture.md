@@ -33,6 +33,7 @@ sam3_auto_annotator/
     |-- settings.py
     |-- theme.py
     |-- undo.py
+    |-- coordinators/
     |-- models/
     |-- rendering/
     |-- resources/
@@ -64,6 +65,27 @@ mapping third-party results into editable annotations.
 
 Filesystem behavior: image discovery, atomic project persistence, YOLO import, CSV
 and YOLO export, summaries, and skipped-segmentation reports.
+
+## GUI responsibility rule
+
+`MainWindow` is a composition shell. It creates the persistent Qt surfaces, owns
+window-specific behavior such as fullscreen/dock visibility, and exposes dialogs
+and file pickers. It must not grow project mutation algorithms.
+
+Workflow state that belongs to GUI interaction but not to a widget is isolated in
+`gui/coordinators/`:
+
+- `AnnotationHistoryCoordinator` owns undo/redo capture and replay boundaries;
+- `SetupDialogCoordinator` owns the staged Apply/Cancel configuration transaction;
+- `ExportDialogCoordinator` owns export readiness/preflight presentation.
+
+This split is behavioral, not cosmetic: private undo snapshots, setup transaction
+snapshots, and export-readiness calculations are no longer `MainWindow` state.
+Tests explicitly prevent those responsibilities from drifting back into the shell.
+
+`ControllerSurfaceAdapter` is the only intentional compatibility shim left for the
+retired Inspector API. New code must not depend on it. It is scheduled for deletion
+when `AppController` stops calling `view.inspector.setCurrentWidget(...)`.
 
 ## Canvas-first window composition
 
@@ -130,7 +152,7 @@ preview after completion.
 
 ## Editing safety and undo
 
-Routine object edits use `QUndoStack`. The current bridge stores completed
+Routine object edits use `QUndoStack`. The current migration layer stores completed
 `ImageRecord` before/after snapshots in `ImageSnapshotCommand` so add, move/resize,
 class change, exact-coordinate edits, reset, and delete are reversible.
 
@@ -143,8 +165,7 @@ Inference clears the object-edit undo stack. Model-generated replacement or
 re-segmentation is a different mutation boundary and must not be mixed with stale
 pre-inference snapshots.
 
-This snapshot implementation is a safe migration layer, not permission to keep
-all annotation coordination inside `MainWindow`. The target controller split is:
+The target application-controller split remains:
 
 ```text
 ProjectController
@@ -153,7 +174,9 @@ InferenceController
 ExportController
 ```
 
-`AppController` is still oversized and remains scheduled for decomposition.
+`AppController` is still oversized. Decomposition is complete only when behavior
+moves behind these use-case boundaries and the compatibility adapter can be deleted;
+merely distributing the same methods into smaller files does not count.
 
 ## Commands and window semantics
 
@@ -206,7 +229,13 @@ never mutate annotation data.
 Tests assert user-visible outcomes rather than obsolete widget trees. Current UI
 acceptance coverage targets central canvas/docks, tool modes, drawing-class
 independence, labels, zoom/pan, fullscreen semantics, undo snapshots, transactional
-Setup, and Export preflight.
+Setup, Export preflight, compact command surfaces, and coordinator boundaries.
+
+GitHub Actions runs compile and the offscreen suite for every pushed branch commit.
+The test job intentionally does not load a real SAM3 model; Ultralytics imports are
+lazy and predictor behavior is tested through fakes. Production requirements are
+still resolved in CI, while real checkpoint/CUDA verification remains a separate
+hardware acceptance step.
 
 Offscreen Qt tests are necessary but not sufficient. Visible Windows verification
 is required for native title bar behavior, maximize/fullscreen restoration, dock
