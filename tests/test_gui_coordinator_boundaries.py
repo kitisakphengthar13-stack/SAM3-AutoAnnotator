@@ -64,6 +64,15 @@ class GuiCoordinatorBoundaryTests(unittest.TestCase):
         self.assertNotIn("_advance_after_review", source)
         self.assertNotIn("ControllerSurfaceAdapter", source)
 
+    def test_coordinators_do_not_call_private_workstation_facade_methods(self):
+        for coordinator_type in (
+            AnnotationHistoryCoordinator,
+            SetupDialogCoordinator,
+            ExportDialogCoordinator,
+        ):
+            with self.subTest(coordinator=coordinator_type.__name__):
+                self.assertNotIn("controller._", inspect.getsource(coordinator_type))
+
 
 if __name__ == "__main__":
     unittest.main()

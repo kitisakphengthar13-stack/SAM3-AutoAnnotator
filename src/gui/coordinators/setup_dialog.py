@@ -35,11 +35,11 @@ class SetupDialogCoordinator:
         controller = self.window.controller
         if controller is not None and controller.project is not None:
             prompts = parse_prompts(self.window.setup.prompts_text())
-            prompt_error = controller._prompt_validation_error(prompts)
+            prompt_error = controller.projects.prompt_validation_error(prompts)
             if prompt_error:
                 self.window.setup.set_prompt_error(prompt_error)
-                controller._update_actions()
-                controller._update_context()
+                controller.presentation.update_actions()
+                controller.presentation.update_context()
                 return
 
         self.window.setup.settings_changed.emit()
@@ -57,5 +57,5 @@ class SetupDialogCoordinator:
         self._snapshot_pending = False
         controller = self.window.controller
         if controller is not None:
-            controller._update_actions()
-            controller._update_context()
+            controller.presentation.update_actions()
+            controller.presentation.update_context()

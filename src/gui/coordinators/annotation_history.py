@@ -101,13 +101,13 @@ class AnnotationHistoryCoordinator:
         controller = self.window.controller
         if controller is None or controller.project is not self._project:
             return
-        controller.dirty = True
+        controller.presentation.mark_dirty(refresh=False)
         self.window.dataset.refresh(image_index)
         if controller.current_image_index == image_index:
-            controller._render_current_annotations(selected_annotation_id)
+            controller.annotations.render_current_annotations(selected_annotation_id)
         else:
-            controller._update_actions()
-            controller._update_context()
+            controller.presentation.update_actions()
+            controller.presentation.update_context()
 
     def clear_if_inference_started(self):
         controller = self.window.controller
