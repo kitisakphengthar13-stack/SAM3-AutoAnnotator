@@ -107,6 +107,7 @@ class MainWindow(QMainWindow):
         self.inspector = _SurfaceRouter(self)
 
         self.actions.project_settings.triggered.connect(self.show_setup)
+        self.actions.export_dialog.triggered.connect(self.show_export_preflight)
         self.actions.fit.triggered.connect(self.canvas.fit_to_window)
         self.actions.zoom_in.triggered.connect(self.canvas.zoom_in)
         self.actions.zoom_out.triggered.connect(self.canvas.zoom_out)
@@ -293,6 +294,42 @@ class MainWindow(QMainWindow):
         self.annotation_dock.show()
         self.annotation_dock.raise_()
 
+    def show_export_preflight(self):
+        project = self.controller.project if self.controller is not None else None
+        if project is None:
+            return
+        images = list(project.images)
+        reviewed = sum(
+            getattr(image.status, "value", image.status) == "reviewed" for image in images
+        )
+        incomplete = sum(
+            getattr(image.status, "value", image.status) in {"not_predicted", "error"}
+            for image in images
+        )
+        stale_segmentation = sum(
+            1
+            for image in images
+            for annotation in image.active_annotations
+            if not annotation.segmentation_valid
+        )
+        needs_review = len(images) - reviewed
+        warning = needs_review > 0 or incomplete > 0 or stale_segmentation > 0
+        self.results.set_status(
+            "Review export warnings before writing files."
+            if warning
+            else "Project is ready to export.",
+            "\n".join(
+                (
+                    f"Reviewed images: {reviewed}/{len(images)}",
+                    f"Needs review: {needs_review}",
+                    f"Unpredicted / failed: {incomplete}",
+                    f"Stale / missing segmentation: {stale_segmentation}",
+                )
+            ),
+        )
+        self.actions.export.setText("Export Anyway" if warning else "Export Now")
+        self.show_results()
+
     def show_results(self):
         self.results_dialog.show()
         self.results_dialog.raise_()
@@ -401,12 +438,16 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, str(title), str(message))
 
     def confirm(self, title, message, *, confirm_text=None):
-        # Single-object deletion is intentionally non-modal now that Undo exists.
-        if str(title) == "Delete Annotation":
+        title = str(title)
+        if title == "Delete Annotation":
+            return True
+        # The export dialog already makes incomplete-project risk explicit and
+        # changes its primary action to Export Anyway.
+        if title == "Incomplete Images" and self.results_dialog.isVisible():
             return True
         dialog = QMessageBox(self)
         dialog.setIcon(QMessageBox.Question)
-        dialog.setWindowTitle(str(title))
+        dialog.setWindowTitle(title)
         dialog.setText(str(message))
         confirm_button = dialog.addButton(
             confirm_text or "Continue", QMessageBox.AcceptRole
