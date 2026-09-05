@@ -84,6 +84,32 @@ class ImageSnapshotUndoTests(unittest.TestCase):
         self.assertEqual(image.status, ImageStatus.EDITED)
         self.assertEqual(callbacks[-1], (0, "ann-1"))
 
+    def test_snapshot_restores_distinct_before_and_after_selection(self):
+        image = ImageRecord("image.png", 1, width=100, height=80)
+        before = image.to_dict()
+        added = image.add_manual_annotation(0, "person", (2, 3, 20, 30))
+        after = image.to_dict()
+        callbacks = []
+        stack = QUndoStack()
+        stack.push(
+            ImageSnapshotCommand(
+                image,
+                before,
+                after,
+                lambda image_index, selected_id: callbacks.append(
+                    (image_index, selected_id)
+                ),
+                text="Add annotation",
+                before_selected_annotation_id=None,
+                after_selected_annotation_id=added.id,
+            )
+        )
+
+        stack.undo()
+        self.assertEqual(callbacks[-1], (1, None))
+        stack.redo()
+        self.assertEqual(callbacks[-1], (1, added.id))
+
     def test_snapshot_restores_added_annotation_list(self):
         image = ImageRecord("image.png", 3, width=100, height=80)
         before = image.to_dict()
@@ -124,7 +150,6 @@ class ImageSnapshotUndoTests(unittest.TestCase):
 
             window.canvas.box_drawn.emit((10, 10, 40, 40))
             QCoreApplication.processEvents()
-            QCoreApplication.processEvents()
             self.assertEqual(window.history.stack.count(), 1)
             self.assertTrue(controller.dirty)
 
@@ -135,7 +160,6 @@ class ImageSnapshotUndoTests(unittest.TestCase):
             annotation = controller.current_image.active_annotations[0]
             original_box = annotation.box_xyxy
             window.canvas.annotation_changed.emit(annotation.id, (12, 12, 45, 45))
-            QCoreApplication.processEvents()
             QCoreApplication.processEvents()
             self.assertTrue(controller.dirty)
 
@@ -150,10 +174,38 @@ class ImageSnapshotUndoTests(unittest.TestCase):
             annotation = controller.current_image.active_annotations[0]
             window.canvas.annotation_changed.emit(annotation.id, (14, 14, 48, 48))
             QCoreApplication.processEvents()
-            QCoreApplication.processEvents()
             window.actions.undo.trigger()
             QCoreApplication.processEvents()
             QCoreApplication.processEvents()
+            self.assertTrue(controller.dirty)
+
+            window.controller = None
+            window.close()
+            window.deleteLater()
+            QCoreApplication.processEvents()
+
+    def test_inference_boundary_preserves_unsaved_dirty_state_when_history_is_dropped(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "image.png"
+            qimage = QImage(100, 80, QImage.Format_RGB32)
+            qimage.fill(Qt.white)
+            self.assertTrue(qimage.save(str(image_path)))
+
+            window = MainWindow()
+            controller = WorkstationController(window, MemorySettings())
+            project = create_project(image_path, ["car"], half=False)
+            controller.projects.load_project(project)
+            QCoreApplication.processEvents()
+            window.canvas_area.active_class_combo.setCurrentIndex(0)
+            window.canvas.box_drawn.emit((10, 10, 40, 40))
+            QCoreApplication.processEvents()
+            self.assertEqual(window.history.stack.count(), 1)
+            self.assertTrue(controller.dirty)
+
+            window.history.clear_for_inference_boundary()
+            QCoreApplication.processEvents()
+
+            self.assertEqual(window.history.stack.count(), 0)
             self.assertTrue(controller.dirty)
 
             window.controller = None
