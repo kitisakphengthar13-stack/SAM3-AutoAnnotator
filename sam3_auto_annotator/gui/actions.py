@@ -24,6 +24,10 @@ class AppActions(QObject):
             "Open Project", "state", "Ctrl+Alt+O",
             "Resume a saved annotation_state.json project.",
         )
+        self.project_settings = self._action(
+            "Setup", "setup", "Ctrl+,",
+            "Configure model, classes, precision, and project output.",
+        )
         self.import_yolo = self._action(
             "Import YOLO", "state", "Ctrl+I",
             "Import existing YOLO detection labels into the current project.",
@@ -145,6 +149,7 @@ class AppActions(QObject):
     @property
     def project_actions(self):
         return (
+            self.project_settings,
             self.import_yolo,
             self.save,
             self.run_current,
