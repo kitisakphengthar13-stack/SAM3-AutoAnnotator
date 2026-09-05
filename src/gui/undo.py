@@ -4,11 +4,11 @@ from copy import deepcopy
 
 from PySide6.QtGui import QUndoCommand
 
-from domain import ImageRecord
+from domain import Annotation, ImageStatus
 
 
-class ImageSnapshotCommand(QUndoCommand):
-    """Undo one completed edit by restoring a stable ImageRecord snapshot."""
+class AnnotationSnapshotCommand(QUndoCommand):
+    """Undo one completed annotation edit without restoring unrelated image metadata."""
 
     def __init__(
         self,
@@ -24,8 +24,8 @@ class ImageSnapshotCommand(QUndoCommand):
     ):
         super().__init__(text)
         self._image = image
-        self._before = deepcopy(before)
-        self._after = deepcopy(after)
+        self._before = self._annotation_state(before)
+        self._after = self._annotation_state(after)
         self._on_applied = on_applied
         self._before_selected_annotation_id = (
             selected_annotation_id
@@ -39,6 +39,14 @@ class ImageSnapshotCommand(QUndoCommand):
         )
         self._first_redo = True
 
+    @staticmethod
+    def _annotation_state(snapshot):
+        return {
+            "status": snapshot["status"],
+            "annotations": deepcopy(snapshot["annotations"]),
+            "error_message": snapshot.get("error_message"),
+        }
+
     def redo(self):
         # QUndoStack.push() invokes redo immediately. The controller has already
         # performed that first edit, so the first invocation must not duplicate it.
@@ -51,15 +59,12 @@ class ImageSnapshotCommand(QUndoCommand):
         self._restore(self._before, self._before_selected_annotation_id)
 
     def _restore(self, snapshot, selected_annotation_id):
-        restored = ImageRecord.from_dict(deepcopy(snapshot))
-        self._image.image_path = restored.image_path
-        self._image.image_name = restored.image_name
-        self._image.image_index = restored.image_index
-        self._image.width = restored.width
-        self._image.height = restored.height
-        self._image.status = restored.status
-        self._image.annotations = restored.annotations
-        self._image.error_message = restored.error_message
+        self._image.status = ImageStatus(snapshot["status"])
+        self._image.annotations = [
+            Annotation.from_dict(deepcopy(item))
+            for item in snapshot["annotations"]
+        ]
+        self._image.error_message = snapshot["error_message"]
         self._on_applied(
             self._image.image_index,
             selected_annotation_id,
