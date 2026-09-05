@@ -3,18 +3,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sam3_auto_annotator.annotation.export import export_corrected_detection
-from sam3_auto_annotator.annotation.models import (
+from sam3_auto_annotator.services.export_service import export_corrected_detection
+from sam3_auto_annotator.core import (
     Annotation,
     AnnotationSource,
     ImageRecord,
     ProjectState,
 )
-from sam3_auto_annotator.annotation.sam3 import (
+from sam3_auto_annotator.sam3.result_mapper import (
     annotations_from_sam3_result,
     best_box_prompt_segmentation,
 )
-from sam3_auto_annotator.annotation.segmentation import (
+from sam3_auto_annotator.core.segmentation import (
     build_segmentation_rows,
     build_skipped_segmentation_rows,
     has_valid_segmentation,

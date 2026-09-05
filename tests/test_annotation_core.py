@@ -3,27 +3,27 @@ import unittest
 import re
 from pathlib import Path
 
-from sam3_auto_annotator.annotation.converters import (
+from sam3_auto_annotator.services.export_rows import (
     build_box_rows,
     build_detection_export,
 )
-from sam3_auto_annotator.annotation.export import export_corrected_detection
-from sam3_auto_annotator.annotation.geometry import (
+from sam3_auto_annotator.services.export_service import export_corrected_detection
+from sam3_auto_annotator.core.geometry import (
     clip_xyxy,
     validate_xyxy,
     xyxy_to_xywh,
     xyxy_to_yolo_xywhn,
 )
-from sam3_auto_annotator.annotation.models import (
+from sam3_auto_annotator.core import (
     Annotation,
     AnnotationSource,
     ImageRecord,
     ImageStatus,
     ProjectState,
 )
-from sam3_auto_annotator.annotation.sam3 import annotations_from_sam3_result, result_image_size
-from sam3_auto_annotator.annotation.store import load_project_state, save_project_state
-from sam3_auto_annotator.exporters.yolo_exporter import write_yolo_labels
+from sam3_auto_annotator.sam3.result_mapper import annotations_from_sam3_result, result_image_size
+from sam3_auto_annotator.storage.project_store import load_project_state, save_project_state
+from sam3_auto_annotator.storage.exporters.yolo_exporter import write_yolo_labels
 
 
 class FakeBoxes:

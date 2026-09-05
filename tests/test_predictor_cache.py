@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sam3_auto_annotator.gui.predictor_cache import PredictorCache, PredictorCacheKey
+from sam3_auto_annotator.sam3.predictor_cache import PredictorCache, PredictorCacheKey
 
 
 class PredictorCacheTests(unittest.TestCase):

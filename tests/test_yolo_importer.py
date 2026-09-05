@@ -2,9 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sam3_auto_annotator.annotation.converters import build_box_rows
-from sam3_auto_annotator.annotation.models import Annotation, AnnotationSource, ImageRecord, ImageStatus, ProjectState
-from sam3_auto_annotator.annotation.yolo_importer import (
+from sam3_auto_annotator.services.export_rows import build_box_rows
+from sam3_auto_annotator.core import Annotation, AnnotationSource, ImageRecord, ImageStatus, ProjectState
+from sam3_auto_annotator.storage.yolo_importer import (
     annotations_from_yolo_file,
     class_name_for_id,
     import_yolo_detection_labels,
@@ -33,6 +33,29 @@ class YoloImporterTests(unittest.TestCase):
 
     def test_unknown_class_id_maps_to_class_name(self):
         self.assertEqual(class_name_for_id(4, ["car"]), "class_4")
+
+    def test_import_extends_project_prompts_and_preserves_yolo_class_ids(self):
+        project = ProjectState(
+            input_path="images",
+            prompts=["car", "class_2"],
+            images=[ImageRecord("images/labeled.jpg", 0, width=100, height=100)],
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            label_dir = Path(temp_dir)
+            (label_dir / "labeled.txt").write_text(
+                "4 0.5 0.5 0.2 0.2\n", encoding="utf-8"
+            )
+            summary = import_yolo_detection_labels(project, label_dir)
+
+        annotation = project.images[0].active_annotations[0]
+        self.assertEqual(annotation.class_id, 4)
+        self.assertEqual(annotation.class_name, project.prompts[4])
+        self.assertEqual(
+            project.prompts,
+            ["car", "class_2", "class_2_2", "class_3", "class_4"],
+        )
+        self.assertEqual(summary.added_classes, 3)
 
     def test_file_parser_skips_invalid_lines(self):
         with tempfile.TemporaryDirectory() as temp_dir:

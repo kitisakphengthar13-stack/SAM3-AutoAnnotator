@@ -1,7 +1,7 @@
 import unittest
 
-from sam3_auto_annotator.annotation.models import ImageRecord, ImageStatus, ProjectState
-from sam3_auto_annotator.gui.project_ops import remaining_prediction_targets
+from sam3_auto_annotator.core import ImageRecord, ImageStatus, ProjectState
+from sam3_auto_annotator.services.project_service import remaining_prediction_targets
 
 
 class BatchTargetSelectionTests(unittest.TestCase):
