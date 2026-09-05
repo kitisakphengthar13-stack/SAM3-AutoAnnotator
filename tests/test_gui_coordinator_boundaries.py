@@ -45,6 +45,7 @@ class GuiCoordinatorBoundaryTests(unittest.TestCase):
             "_draw_class_restore",
             "_setup_snapshot",
             "_setup_snapshot_pending",
+            "inspector",
         ):
             with self.subTest(name=retired_name):
                 self.assertFalse(hasattr(self.window, retired_name))
@@ -61,6 +62,7 @@ class GuiCoordinatorBoundaryTests(unittest.TestCase):
         self.assertNotIn("parse_prompts", source)
         self.assertNotIn("stale_segmentation = sum", source)
         self.assertNotIn("_advance_after_review", source)
+        self.assertNotIn("ControllerSurfaceAdapter", source)
 
 
 if __name__ == "__main__":
