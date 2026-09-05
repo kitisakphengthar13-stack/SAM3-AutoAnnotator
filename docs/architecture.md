@@ -3,16 +3,14 @@
 ## Product direction
 
 SAM3 AutoAnnotator is a desktop annotation workstation, not a form application and
-not a GUI wrapper around a CLI. Architecture is organized around a high-frequency
-human review loop while preserving independent domain, inference, and storage
-boundaries.
+not a GUI wrapper around a CLI. The high-frequency loop is:
 
 ```text
 Open -> Configure -> Predict/Import -> Inspect/Edit -> Review & Next -> Save -> Export
 ```
 
-Configuration and export are secondary transactions. They do not define the
-persistent geometry of the annotation workspace.
+Configuration and export are transient transactions. The canvas and object review
+workflow define the persistent workstation.
 
 ## Top-level boundaries
 
@@ -28,8 +26,8 @@ sam3_auto_annotator/
 |-- storage/
 `-- gui/
     |-- actions.py
-    |-- controller.py              # legacy host being decomposed
-    |-- controllers/               # active use-case controllers
+    |-- controller.py              # compatibility import alias only
+    |-- controllers/               # active application controllers
     |-- coordinators/              # cross-widget UI transactions
     |-- main_window.py
     |-- settings.py
@@ -37,74 +35,61 @@ sam3_auto_annotator/
     |-- undo.py
     |-- models/
     |-- rendering/
-    |-- resources/
     |-- tasks/
     |-- views/
     `-- widgets/
 ```
 
-`core`, `services`, `sam3`, and `storage` remain UI-independent. GUI structure may
-be replaced without changing annotation/export domain rules.
+`core`, `services`, `sam3`, and `storage` remain UI-independent.
 
-### Core
+## Application controller composition
 
-Pure project concepts and invariants: annotations, image/project state, geometry,
-segmentation validity, serialization-ready records. No Qt or Ultralytics imports.
-
-### Services
-
-Application use cases: create/load/save projects, import labels, apply annotation
-edits, run prediction/re-segmentation, select pending targets, and build exports.
-Services do not own desktop widgets.
-
-### SAM3 boundary
-
-Lazy Ultralytics predictor construction, cache/reuse, precision configuration, and
-mapping third-party results into editable annotations.
-
-### Storage
-
-Filesystem behavior: image discovery, atomic project persistence, YOLO import, CSV
-and YOLO export, summaries, and skipped-segmentation reports.
-
-## GUI responsibility rule
-
-`MainWindow` is a composition shell. It creates the persistent Qt surfaces, owns
-window-specific behavior such as fullscreen/dock visibility, and exposes dialogs
-and file pickers. It must not grow project mutation algorithms.
-
-Workflow state that belongs to GUI interaction but not to a widget is isolated in
-`gui/coordinators/`:
-
-- `AnnotationHistoryCoordinator` owns undo/redo capture and replay boundaries;
-- `AnnotationInteractionCoordinator` owns Review & Next cross-view follow-up;
-- `SetupDialogCoordinator` owns the staged Apply/Cancel configuration transaction;
-- `ExportDialogCoordinator` owns export readiness/preflight presentation.
-
-This split is behavioral, not cosmetic: private undo snapshots, setup transaction
-snapshots, and export-readiness calculations are no longer `MainWindow` state.
-Tests explicitly prevent those responsibilities from drifting back into the shell.
-
-Application use cases are moving through a strangler facade in `gui/controllers/`.
-`application.py` constructs `WorkstationController`, not the old `AppController`
-directly. The facade currently delegates active runtime behavior to:
+`application.py` constructs `WorkstationController`. It is a small composition root
+for shared application state, signal wiring, and focused controllers:
 
 ```text
-ProjectController     project activation and YOLO import
-AnnotationController  selection/edit/review/manual boxes
-InferenceController   prediction/re-segmentation/batch result application
-ExportController      export/preview/output workflows
+WorkstationController
+|-- ProjectController
+|-- AnnotationController
+|-- InferenceController
+|-- ExportController
+`-- PresentationController
 ```
 
-The legacy `AppController` temporarily supplies common state, settings validation,
-task start/finish orchestration, persistence, action-state calculation, and shared
-error/context helpers. New code must not add new use cases to it. Migration is done
-only when those remaining responsibilities have been moved or deliberately reduced
-and the inherited class can be deleted.
+Responsibilities are explicit:
 
-`ControllerSurfaceAdapter` remains only for legacy tests/code paths that instantiate
-`AppController` directly. The active Project/Annotation/Inference/Export controllers
-contain no Inspector references. The adapter is not an accepted workstation API.
+- `ProjectController`: open/create/load/save projects, staged project settings,
+  model/output browsing, path memory, and YOLO import.
+- `AnnotationController`: object selection, rendering, manual boxes, class/box edits,
+  delete/reset, overlays, and review operations.
+- `InferenceController`: inference settings, run-current/run-pending/re-segmentation,
+  task start/cancel/finish, and application of prediction/batch results.
+- `ExportController`: export, preview, output paths, and filesystem-facing export
+  presentation.
+- `PresentationController`: image loading, dataset-filter presentation, dirty/status
+  context, action enablement policy, and GUI error reporting.
+
+`WorkstationController` does not inherit a monolithic controller and does not
+reimplement these use cases. `gui/controller.py` contains only a temporary import
+alias (`AppController = WorkstationController`) for callers that still import the
+old module path; it contains no legacy controller implementation.
+
+The retired Inspector API and `ControllerSurfaceAdapter` no longer exist.
+
+## Main window and coordinators
+
+`MainWindow` is a Qt composition shell. It owns window-only concerns such as docks,
+dialog containers, fullscreen/focus behavior, file pickers, native messages, and
+status-bar surfaces. Project mutation algorithms do not belong there.
+
+Cross-widget UI transactions live in `gui/coordinators/`:
+
+- `AnnotationHistoryCoordinator`: undo/redo capture and replay boundaries;
+- `AnnotationInteractionCoordinator`: Review & Next follow-up;
+- `SetupDialogCoordinator`: staged Apply/Cancel setup transaction;
+- `ExportDialogCoordinator`: export preflight/result dialog behavior.
+
+Tests guard against moving those algorithms back into `MainWindow`.
 
 ## Canvas-first window composition
 
@@ -124,122 +109,94 @@ splitter and no persistent Setup/Review/Export tab stack.
 
 ### Dataset dock
 
-Owns search, status filtering, image counts, list selection, and previous/next
-navigation. It can be closed, moved, floated, and restored through View.
+Owns image search/filter/list presentation and navigation. It may be closed, moved,
+floated, and restored from View.
 
 ### Objects dock
 
-The object table is the primary content. Compact selected-object controls below it
-provide class, exact coordinates, re-segmentation, reset, and delete. The dock can
-be hidden without making class identity unknowable because objects are labeled on
-the canvas.
+The object table is primary. Compact selected-object controls provide class,
+coordinates, re-segmentation, reset, and delete. Class identity remains visible on
+the canvas when this dock is hidden.
 
 ### Canvas workspace
 
-Owns image rendering/editable boxes, class/confidence labels, the independent active
-class for the next new box, exclusive Select/Pan/Box tools, temporary Space-pan,
-Zoom Out/100%/Zoom In/Fit, overlay visibility, inference progress, and focus mode.
+Owns image rendering/editable boxes, class/confidence labels, an independent active
+class for the next box, Select/Pan/Box tools, Space-pan, zoom/100%/Fit, overlays,
+and inference progress.
 
-The active drawing class is not the selected-object class editor. Manual annotation
-creation reads the visible `active_class_combo` directly; no compatibility bridge
-changes the selected-object class behind the user's back.
+The active drawing class is not the selected-object class editor. Manual box
+creation reads the visible active class directly.
 
-### Setup transaction
+## Setup and export transactions
 
-Setup stages model path, prompts/classes, confidence, FP16, and output location.
-Typing does not mutate `ProjectState`. Apply emits one validated settings commit;
-Cancel or window close restores the snapshot captured when the dialog opened.
-Invalid class removal leaves the dialog open with validation feedback.
+Setup stages model path, classes/prompts, confidence, FP16, and output location.
+Typing does not mutate the project. Apply validates before one commit; Cancel or
+window close discards the draft. Removing an in-use class rejects the transaction
+without partial mutation.
 
-Loading an existing project does not automatically open Setup. That behavior came
-from the retired Inspector tab model and is intentionally not preserved.
+Loading an existing project does not automatically open Setup.
 
-### Export transaction
-
-`Ctrl+E` opens preflight rather than writing files. The dialog summarizes review
-completion, failed/unpredicted images, and stale/missing segmentation. A separate
-primary action inside the dialog performs the write and becomes **Export Anyway**
-when warnings are present. The same transient surface presents output paths and
-preview after completion.
+`Ctrl+E` opens Export preflight rather than writing files. Preflight reports review
+completion, failed/unpredicted images, and segmentation readiness. Disk writes only
+occur after the explicit Export Now/Export Anyway action.
 
 ## Editing safety and undo
 
-Routine object edits use `QUndoStack`. The current migration layer stores completed
-`ImageRecord` before/after snapshots in `ImageSnapshotCommand` so add, move/resize,
-class change, exact-coordinate edits, reset, and delete are reversible.
+Routine completed object edits are captured through `QUndoStack` using
+`ImageSnapshotCommand`. Add, move/resize, class change, exact-coordinate edit,
+reset, and delete are reversible. Single-object Delete is immediate rather than
+modal because Undo is the recovery path.
 
-`QUndoStack.push()` calls `redo()` immediately, so a snapshot command deliberately
-skips its first redo: the controller has already completed the mutation before the
-command is recorded. Subsequent undo/redo restores a fresh `ImageRecord` from the
-serialized snapshot and republishes models/canvas state.
-
-Inference clears the object-edit undo stack. Model-generated replacement or
-re-segmentation is a different mutation boundary and must not be mixed with stale
-pre-inference snapshots.
+Inference clears object-edit history before model-generated state replaces or
+re-segments annotations, preventing stale snapshots from crossing that mutation
+boundary.
 
 ## Commands and window semantics
 
-- Fit fits the image viewport.
-- 100% restores a 1:1 transform.
-- Zoom changes only canvas scale.
+- Fit changes image framing only.
+- 100% restores a 1:1 canvas transform.
+- Zoom changes canvas scale only.
 - Focus Workspace hides/restores side docks.
-- Fullscreen changes actual main-window state (`F11`).
+- F11 changes actual main-window fullscreen state.
 - Select (`Esc`), Pan (`P`), and Box (`B`) are exclusive editing modes.
 - Undo/Redo use standard platform shortcuts.
 
-Fit never substitutes for window maximize/fullscreen.
-
-The global command bar is intentionally small. Dense canvas tools stay in the
-canvas bar. Navigation and undo/redo use compact icon-only toolbar controls to
-avoid creating an overflow-navigation dependency at the minimum window size.
+Native window maximize/fullscreen is never represented by the image Fit command.
 
 ## Models and background work
 
 Images use `QAbstractListModel` plus `QSortFilterProxyModel`; annotations use
-`QAbstractTableModel`. Domain records remain project-owned and Qt models publish
-state to views.
+`QAbstractTableModel`. Domain records remain project-owned.
 
-Inference remains off the GUI thread through worker `QObject` instances in
-`QThread`. Cancellation is cooperative. No redesign may move blocking SAM3 work
-onto the main thread.
+SAM3 work remains off the GUI thread through worker `QObject` instances in
+`QThread`. Cancellation is cooperative; blocking model work must not move to the
+main thread.
 
-## Persistent UI and project state
+## Persistent state and safety invariants
 
-`QSettings` stores window geometry and `QMainWindow.saveState()` data, including
-toolbar/dock placement. Retired splitter-state persistence is not retained.
+`QSettings` stores window geometry and `QMainWindow.saveState()` data for docks and
+toolbars. Project content remains in `annotation_state.json`.
 
-Project content remains exclusively in `annotation_state.json`; window layout must
-never mutate annotation data.
-
-## Data safety invariants
+Required invariants include:
 
 - project saves use atomic replacement;
 - pending prediction does not overwrite edited/reviewed images;
-- unchanged annotation edits are no-ops;
-- changing geometry or class invalidates stale segmentation;
+- unchanged edits are no-ops;
+- geometry/class changes invalidate stale segmentation;
 - failed image loading clears stale canvas graphics;
-- invalid/stale polygons are reported instead of exported as valid;
-- duplicate image stems are rejected before YOLO overwrite can occur;
-- unsaved project work is protected on close;
-- active inference is not force-terminated.
+- invalid/stale polygons are reported rather than exported as valid;
+- unsaved work is protected on close;
+- active inference is cancelled cooperatively rather than force-terminated.
 
 ## Verification philosophy
 
-Tests assert user-visible outcomes rather than obsolete widget trees. Current UI
-acceptance coverage targets central canvas/docks, tool modes, drawing-class
-independence, labels, zoom/pan, fullscreen semantics, undo snapshots, transactional
-Setup, Export preflight, compact command surfaces, coordinator boundaries, and
-active controller routing.
-
-GitHub Actions runs compile and the offscreen suite for every pushed branch commit.
-The test job installs the Linux EGL runtime required by PySide6. It intentionally
-does not load a real SAM3 model; Ultralytics imports are lazy and predictor behavior
-is tested through fakes. Production requirements are still dependency-resolved in
-CI, while real checkpoint/CUDA verification remains a separate hardware step.
+Tests assert user-visible behavior and architecture boundaries rather than the old
+widget tree. CI dependency-resolves production requirements, compiles the project,
+and runs the complete offscreen suite on each current branch head.
 
 Offscreen Qt tests are necessary but not sufficient. Visible Windows verification
-is required for native title bar behavior, maximize/fullscreen restoration, dock
-interaction, high-DPI scaling, real pointer hit targets, toolbar overflow behavior,
-and keyboard shortcuts.
+is still required for native title-bar behavior, maximized/fullscreen restoration,
+dock interaction, high-DPI scaling, pointer hit targets, toolbar overflow, and
+keyboard shortcuts. Real SAM3/CUDA validation remains a separate hardware check.
 
-The concrete user-visible contract lives in [UI audit](ui-audit.md).
+The concrete interaction contract lives in [UI audit](ui-audit.md).
