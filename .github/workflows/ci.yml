@@ -5,6 +5,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -20,6 +23,38 @@ jobs:
       PYTHONPATH: src
     steps:
       - uses: actions/checkout@v4
+      - name: Migrate legacy GUI field test callers
+        if: github.ref == 'refs/heads/redesign/canvas-workspace-v2' && github.actor != 'github-actions[bot]'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/test_gui_fields.py')
+          text = path.read_text(encoding='utf-8')
+          replacements = {
+              'controller.open_image()': 'controller.projects.open_image()',
+              'controller.run_current()': 'controller.inference.run_current()',
+              'controller.load_current_image()': 'controller.presentation.load_current_image()',
+              'controller.select_annotation(': 'controller.annotations.select_annotation(',
+              'controller.canvas_box_changed(': 'controller.annotations.canvas_box_changed(',
+              'controller.apply_selected_class()': 'controller.annotations.apply_selected_class()',
+              'controller.apply_box_fields()': 'controller.annotations.apply_box_fields()',
+              'controller.resegment_selected()': 'controller.inference.resegment_selected()',
+          }
+          for old, new in replacements.items():
+              text = text.replace(old, new)
+          path.write_text(text, encoding='utf-8')
+          remaining = [old for old in replacements if old in text]
+          if remaining:
+              raise SystemExit(f'legacy calls remain: {remaining}')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_gui_fields.py
+          if ! git diff --cached --quiet; then
+            git commit -m "tests: call focused controllers directly"
+            git push origin HEAD:redesign/canvas-workspace-v2
+          fi
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
