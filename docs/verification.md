@@ -1,13 +1,13 @@
 # Verification
 
-This file distinguishes implementation evidence from tests that still need to be
-executed on the target repository checkout.
+This file separates automated evidence already executed on the redesign branch from
+hardware/native-window checks that still require the target Windows workstation.
 
 ## Current redesign branch
 
 Branch: `redesign/canvas-workspace-v2`
 
-The branch now changes the interaction model materially:
+The branch changes the interaction model materially:
 
 - canvas-first `QMainWindow` with Dataset/Objects docks;
 - explicit Select / Pan / Box tools and visible active drawing class;
@@ -17,40 +17,41 @@ The branch now changes the interaction model materially:
 - Objects-list-first right dock instead of a fixed-height editor form;
 - transactional Setup with Apply/Cancel;
 - Export preflight before disk writes;
-- compact command bar rather than relying on overflow navigation.
+- compact command bar rather than relying on overflow navigation;
+- active Project/Annotation/Inference/Export use cases routed through focused
+  controllers behind `WorkstationController`.
 
-The historical `112 tests passed` result from `main` is **not** a result for this
-branch.
+The historical `112 tests passed` result from `main` is not used as evidence for
+this branch.
 
-At the latest connector check, GitHub reported no status checks and no workflow
-runs for the branch head. The GitHub connector can read/write repository content
-but cannot execute the checkout. Therefore this document makes **no runtime pass
-claim** for the redesign branch.
+## Automated branch evidence
 
-## Required local baseline
+GitHub Actions run `33959388888` executed against branch head
+`56f430034d8e70bbe29429cc9b20a43f4bfb0a4a` on 2026-09-05 and completed
+successfully.
 
-From the repository root on the redesign branch:
+Environment and checks recorded by the run:
 
-```powershell
-.\.venv\Scripts\python.exe --version
-.\.venv\Scripts\python.exe -m pip check
-.\.venv\Scripts\python.exe -m compileall -q main.py sam3_auto_annotator tests
-```
+- Ubuntu 24.04 runner;
+- CPython 3.12.14;
+- PySide6 6.11.2;
+- Pillow 12.3.0;
+- Linux EGL runtime installed for Qt offscreen execution;
+- production `requirements.txt` dependency resolution completed with `pip --dry-run`;
+- `python -m compileall -q main.py sam3_auto_annotator tests` passed;
+- `python -m unittest discover -s tests -v` ran **127 tests**;
+- result: **127 passed, 0 failures, 0 errors**.
 
-Then run:
+The workflow uses `QT_QPA_PLATFORM=offscreen` and does not load a real SAM3
+checkpoint. Ultralytics production dependencies are resolved but the heavy
+Torch/CUDA stack is not installed merely to exercise GUI/domain unit tests.
 
-```powershell
-$env:QT_QPA_PLATFORM = "offscreen"
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-Remove-Item Env:QT_QPA_PLATFORM -ErrorAction SilentlyContinue
-```
+CI is configured with branch-level concurrency so a newer push cancels obsolete
+runs and validation follows the newest branch head.
 
-Record exact Python/PySide6 versions, test count, failures/errors, and exit code. A
-command listed here is not a passing result.
+## Automated acceptance covered
 
-## Automated acceptance added by the redesign
-
-`tests/test_gui_ui_audit.py` checks the workstation contract, including:
+`tests/test_gui_ui_audit.py` verifies:
 
 - canvas centrality and independent docks;
 - View-menu recovery for closed docks;
@@ -62,20 +63,37 @@ command listed here is not a passing result.
 - canvas class/confidence labels;
 - Zoom In/Out, 100%, Fit, Space-pan, and fullscreen/Fit separation.
 
-`tests/test_gui_undo.py` checks snapshot command semantics for completed delete/add
-edits, including the required first-redo no-op when pushed to `QUndoStack`.
+`tests/test_gui_undo.py` verifies snapshot command semantics for completed edits,
+including the required first-redo no-op when a completed mutation is pushed to
+`QUndoStack`.
 
-`tests/test_gui_setup_dialog.py` checks:
+`tests/test_gui_setup_dialog.py` verifies staged Apply/Cancel behavior and rejects
+invalid class removal without a partial settings commit.
 
-- Cancel restoring the values present when Setup opened;
-- Apply emitting one settings commit;
-- closing the dialog discarding draft values;
-- validation failure preventing the commit signal entirely.
+`tests/test_gui_coordinator_boundaries.py` verifies that undo, Setup transaction,
+Export preflight, and cross-view interaction state do not drift back into
+`MainWindow`.
 
-`tests/test_gui_controller.py` now requires prompt edits to remain drafts until
-Apply and requires in-use class removal to be rejected on Apply.
+`tests/test_workstation_controller.py` verifies the active controller decomposition,
+that active use-case controllers do not reference the retired Inspector API, that
+loading a project does not automatically open Setup, and that manual boxes use the
+visible active drawing class directly.
 
-These tests are source-level acceptance definitions until they are actually run.
+## Required local Windows baseline
+
+From the repository root on the redesign branch:
+
+```powershell
+.\.venv\Scripts\python.exe --version
+.\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\python.exe -m compileall -q main.py sam3_auto_annotator tests
+$env:QT_QPA_PLATFORM = "offscreen"
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+Remove-Item Env:QT_QPA_PLATFORM -ErrorAction SilentlyContinue
+```
+
+The CI result above is real branch evidence, but a local run remains useful because
+the deployed workstation may use a different Python/PySide6/GPU environment.
 
 ## Visible Windows acceptance
 
@@ -121,7 +139,7 @@ Check at minimum:
 
 ## Regression checks retained from the product
 
-The redesign must still verify:
+The redesign continues to require:
 
 - corrupt image decode clears stale graphics and exposes recovery;
 - unchanged box/class edits remain no-ops;
@@ -137,4 +155,4 @@ The redesign must still verify:
 Real checkpoint inference remains hardware-dependent. Before claiming a GPU pass,
 verify CUDA device selection, first inference, predictor reuse, GUI responsiveness,
 saved-state round trip, and export counts with the intended local SAM3 checkpoint.
-A fake-predictor or CPU-only test is not a real GPU pass.
+A fake-predictor or offscreen CI pass is not a real GPU pass.
