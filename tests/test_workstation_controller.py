@@ -12,6 +12,8 @@ from PySide6.QtWidgets import QApplication
 from sam3_auto_annotator.gui.controllers import WorkstationController
 from sam3_auto_annotator.gui.controllers.annotation_controller import AnnotationController
 from sam3_auto_annotator.gui.controllers.export_controller import ExportController
+from sam3_auto_annotator.gui.controllers.inference_controller import InferenceController
+from sam3_auto_annotator.gui.controllers.project_controller import ProjectController
 from sam3_auto_annotator.gui.main_window import MainWindow
 from sam3_auto_annotator.services.project_service import create_project
 
@@ -54,7 +56,9 @@ class WorkstationControllerTests(unittest.TestCase):
 
     def test_window_is_bound_to_active_workstation_controller(self):
         self.assertIs(self.window.controller, self.controller)
+        self.assertIsInstance(self.controller.projects, ProjectController)
         self.assertIsInstance(self.controller.annotations, AnnotationController)
+        self.assertIsInstance(self.controller.inference, InferenceController)
         self.assertIsInstance(self.controller.exports, ExportController)
 
     def test_export_methods_route_through_extracted_controller(self):
