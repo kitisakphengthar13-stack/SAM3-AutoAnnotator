@@ -4,7 +4,7 @@ import logging
 from math import isclose
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QTimer
+from PySide6.QtCore import QObject
 
 from sam3_auto_annotator.app_paths import discover_default_model
 from sam3_auto_annotator.core import ImageStatus
@@ -19,7 +19,6 @@ from sam3_auto_annotator.services.project_service import (
     parse_prompts,
     remaining_prediction_targets,
 )
-from sam3_auto_annotator.storage.image_catalog import validate_model_path
 
 
 logger = logging.getLogger(__name__)
@@ -334,125 +333,37 @@ class WorkstationController(QObject):
     def _after_annotation_change(self, select_id=None):
         return self.annotations.after_annotation_change(select_id)
 
-    # Inference command and task lifecycle --------------------------------
+    # Inference workflow --------------------------------------------------
     def _inference_settings(self):
-        prompts = self._sync_project_settings(require_prompts=True)
-        model_path = self.view.setup.model_path_edit.text().strip()
-        validate_model_path(model_path)
-        return {
-            "model_path": model_path,
-            "prompts": prompts,
-            "confidence": self.view.setup.conf_edit.value(),
-            "half": self.view.setup.half_check.isChecked(),
-        }
+        return self.inference.settings()
 
     def run_current(self):
-        image = self.current_image
-        if image is None or not self._current_image_loaded:
-            return
-        try:
-            settings = self._inference_settings()
-        except Exception as exc:
-            self._finish_start_failure(exc)
-            return
-        if image.active_annotations and not self.view.confirm(
-            "Replace Current Annotations",
-            "Running SAM3 will replace all annotations on the selected image.",
-            confirm_text="Replace and Run",
-        ):
-            return
-        try:
-            self._start_task(UiMode.PREDICTING)
-            self.tasks.start_prediction(
-                image.image_index,
-                image_path=image.image_path,
-                **settings,
-            )
-            self.view.task_progress.show_running("Running SAM3…")
-        except Exception as exc:
-            self._finish_start_failure(exc)
+        return self.inference.run_current()
 
     def run_remaining(self):
-        if self.project is None:
-            return
-        targets = remaining_prediction_targets(self.project)
-        if not targets:
-            self.view.show_info(
-                "Nothing to Run",
-                "All images are already predicted, edited, reviewed, or marked as no detection.",
-            )
-            return
-        try:
-            settings = self._inference_settings()
-            self._start_task(UiMode.BATCH)
-            self.tasks.start_batch(targets, **settings)
-            self.view.task_progress.show_running(
-                f"Preparing {len(targets)} images…",
-                len(targets),
-                cancellable=True,
-            )
-        except Exception as exc:
-            self._finish_start_failure(exc)
+        return self.inference.run_remaining()
 
     def resegment_selected(self):
-        annotation = self.selected_annotation
-        image = self.current_image
-        if annotation is None or image is None:
-            return
-        try:
-            settings = self._inference_settings()
-            settings.pop("prompts")
-            self._start_task(UiMode.RESEGMENTING)
-            self.tasks.start_segmentation(
-                image.image_index,
-                annotation.id,
-                image_path=image.image_path,
-                box_xyxy=annotation.box_xyxy,
-                class_name=annotation.class_name,
-                **settings,
-            )
-            self.view.task_progress.show_running("Re-segmenting selected box…")
-        except Exception as exc:
-            self._finish_start_failure(exc)
+        return self.inference.resegment_selected()
 
     def _start_task(self, mode):
-        if self.tasks.is_running:
-            raise RuntimeError("Another SAM3 task is already running.")
-        self.mode = mode
-        self._task_project = self.project
-        self._update_actions()
+        return self.inference.start_task(mode)
 
     def _finish_start_failure(self, exc):
-        self.mode = UiMode.READY if self.project is not None else UiMode.EMPTY
-        self._task_project = None
-        self._update_actions()
-        self._report_error(
-            "Could Not Start SAM3",
-            "SAM3 could not be started with the current settings.",
-            "Select a valid model, enter at least one class, and retry.",
-            exc,
-        )
+        return self.inference.finish_start_failure(exc)
 
     def cancel_task(self):
-        if self.tasks.request_cancel():
-            self.view.actions.cancel_batch.setEnabled(False)
-            self.view.task_progress.status_label.setText(
-                "Cancel requested; waiting for the current image…"
-            )
+        return self.inference.cancel_task()
 
     def task_status(self, message):
-        self.view.task_progress.status_label.setText(message)
-        self.view.set_message(message)
+        return self.inference.task_status(message)
 
-    def task_started(self, _kind):
-        self._update_actions()
+    def task_started(self, kind):
+        return self.inference.task_started(kind)
 
     def batch_progress(self, current, total, image_path):
-        message = f"{current}/{total}  {Path(image_path).name}"
-        self.view.task_progress.update_progress(current - 1, total, message)
-        self.view.set_message(f"Running SAM3: {message}")
+        return self.inference.batch_progress(current, total, image_path)
 
-    # Inference result workflow ------------------------------------------
     def prediction_ready(self, image_index, prediction):
         return self.inference.prediction_ready(image_index, prediction)
 
@@ -483,14 +394,8 @@ class WorkstationController(QObject):
     def _prediction_error(self, message, exc=None):
         return self.inference.prediction_error(message, exc)
 
-    def task_finished(self, _kind):
-        self.mode = UiMode.READY if self.project is not None else UiMode.EMPTY
-        self._task_project = None
-        self._update_actions()
-        self._update_context()
-        if self._close_pending:
-            self._close_pending = False
-            QTimer.singleShot(0, self.view.close)
+    def task_finished(self, kind):
+        return self.inference.task_finished(kind)
 
     # Export workflow -----------------------------------------------------
     def export_labels(self):
