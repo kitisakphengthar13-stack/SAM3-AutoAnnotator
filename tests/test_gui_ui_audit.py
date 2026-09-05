@@ -54,6 +54,11 @@ class GuiUiAuditTests(unittest.TestCase):
         self.assertTrue(image.save(str(path)))
         return path
 
+    def load_canvas(self, window):
+        window.canvas.load_image(self.make_image())
+        window.show_canvas(True)
+        QCoreApplication.processEvents()
+
     def test_canvas_is_the_central_work_surface(self):
         window = self.make_window()
         self.assertIs(window.centralWidget(), window.canvas_area)
@@ -66,8 +71,9 @@ class GuiUiAuditTests(unittest.TestCase):
         self.assertIsInstance(window.annotation_dock, QDockWidget)
         self.assertIs(window.dataset_dock.widget(), window.dataset)
         self.assertIs(window.annotation_dock.widget(), window.annotation)
-        self.assertTrue(window.dataset_dock.features() & QDockWidget.DockWidgetClosable)
-        self.assertTrue(window.annotation_dock.features() & QDockWidget.DockWidgetClosable)
+        closable = QDockWidget.DockWidgetFeature.DockWidgetClosable
+        self.assertTrue(window.dataset_dock.features() & closable)
+        self.assertTrue(window.annotation_dock.features() & closable)
 
     def test_focus_workspace_hides_and_restores_side_panels(self):
         window = self.make_window()
@@ -113,7 +119,7 @@ class GuiUiAuditTests(unittest.TestCase):
 
     def test_canvas_has_explicit_zoom_fit_and_actual_size_controls(self):
         window = self.make_window()
-        window.canvas.load_image(self.make_image())
+        self.load_canvas(window)
         start_scale = window.canvas.transform().m11()
 
         window.actions.zoom_in.trigger()
@@ -130,7 +136,7 @@ class GuiUiAuditTests(unittest.TestCase):
 
     def test_space_temporarily_enables_hand_pan(self):
         window = self.make_window()
-        window.canvas.load_image(self.make_image())
+        self.load_canvas(window)
         press = QKeyEvent(QEvent.KeyPress, Qt.Key_Space, Qt.NoModifier)
         release = QKeyEvent(QEvent.KeyRelease, Qt.Key_Space, Qt.NoModifier)
 
