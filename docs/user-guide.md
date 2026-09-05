@@ -108,12 +108,19 @@ from old geometry/class. Unchanged Apply operations are no-ops.
 ### Undo and delete
 
 Completed add, move/resize, class change, coordinate Apply, Reset, and Delete
-operations are undoable. Single-object Delete does not show a confirmation dialog;
-Undo is the recovery path.
+operations are undoable. Undo/Redo also restore the appropriate object selection.
+Single-object Delete does not show a confirmation dialog; Undo is the recovery path.
 
-Inference is a separate mutation boundary. Starting model-generated replacement or
-re-segmentation clears stale object-edit undo history so old snapshots cannot be
-replayed into new model state.
+Undo history is intentionally limited to object edits. Non-undoable project/image
+changes such as **Review & Next**, applied Setup changes, YOLO import, and inference
+results/errors clear older object-edit history so an old snapshot cannot overwrite
+newer state. Starting SAM3 or Re-segment clears history only when the task actually
+starts; a validation/start failure does not discard valid Undo history.
+
+The saved-state marker uses the undo stack clean index. If you save, make only
+undoable object edits, and Undo exactly back to the saved point, the project returns
+to clean state. Once a non-undoable mutation occurs, the project remains dirty until
+Save/Export establishes a new clean state.
 
 ### Re-segment and reset
 
