@@ -28,12 +28,13 @@ sam3_auto_annotator/
 |-- storage/
 `-- gui/
     |-- actions.py
-    |-- controller.py
+    |-- controller.py              # legacy host being decomposed
+    |-- controllers/               # active use-case controllers
+    |-- coordinators/              # cross-widget UI transactions
     |-- main_window.py
     |-- settings.py
     |-- theme.py
     |-- undo.py
-    |-- coordinators/
     |-- models/
     |-- rendering/
     |-- resources/
@@ -76,6 +77,7 @@ Workflow state that belongs to GUI interaction but not to a widget is isolated i
 `gui/coordinators/`:
 
 - `AnnotationHistoryCoordinator` owns undo/redo capture and replay boundaries;
+- `AnnotationInteractionCoordinator` owns Review & Next cross-view follow-up;
 - `SetupDialogCoordinator` owns the staged Apply/Cancel configuration transaction;
 - `ExportDialogCoordinator` owns export readiness/preflight presentation.
 
@@ -83,9 +85,26 @@ This split is behavioral, not cosmetic: private undo snapshots, setup transactio
 snapshots, and export-readiness calculations are no longer `MainWindow` state.
 Tests explicitly prevent those responsibilities from drifting back into the shell.
 
-`ControllerSurfaceAdapter` is the only intentional compatibility shim left for the
-retired Inspector API. New code must not depend on it. It is scheduled for deletion
-when `AppController` stops calling `view.inspector.setCurrentWidget(...)`.
+Application use cases are moving through a strangler facade in `gui/controllers/`.
+`application.py` constructs `WorkstationController`, not the old `AppController`
+directly. The facade currently delegates active runtime behavior to:
+
+```text
+ProjectController     project activation and YOLO import
+AnnotationController  selection/edit/review/manual boxes
+InferenceController   prediction/re-segmentation/batch result application
+ExportController      export/preview/output workflows
+```
+
+The legacy `AppController` temporarily supplies common state, settings validation,
+task start/finish orchestration, persistence, action-state calculation, and shared
+error/context helpers. New code must not add new use cases to it. Migration is done
+only when those remaining responsibilities have been moved or deliberately reduced
+and the inherited class can be deleted.
+
+`ControllerSurfaceAdapter` remains only for legacy tests/code paths that instantiate
+`AppController` directly. The active Project/Annotation/Inference/Export controllers
+contain no Inspector references. The adapter is not an accepted workstation API.
 
 ## Canvas-first window composition
 
@@ -117,20 +136,13 @@ the canvas.
 
 ### Canvas workspace
 
-Owns:
+Owns image rendering/editable boxes, class/confidence labels, the independent active
+class for the next new box, exclusive Select/Pan/Box tools, temporary Space-pan,
+Zoom Out/100%/Zoom In/Fit, overlay visibility, inference progress, and focus mode.
 
-- image rendering and editable bounding boxes;
-- class/confidence labels attached to visible boxes;
-- independent active class for the next new box;
-- mutually exclusive Select / Pan / Box tools;
-- temporary Space-pan while Select is active;
-- Zoom Out / 100% / Zoom In / Fit;
-- box/mask/polygon visibility;
-- inference progress/cancellation;
-- focus-workspace control.
-
-The active drawing class is not the selected-object class editor. These selections
-share the same class model but not the same current index.
+The active drawing class is not the selected-object class editor. Manual annotation
+creation reads the visible `active_class_combo` directly; no compatibility bridge
+changes the selected-object class behind the user's back.
 
 ### Setup transaction
 
@@ -139,8 +151,8 @@ Typing does not mutate `ProjectState`. Apply emits one validated settings commit
 Cancel or window close restores the snapshot captured when the dialog opened.
 Invalid class removal leaves the dialog open with validation feedback.
 
-Prediction commands are not owned by the Setup form. They remain in the annotation
-workflow so configuration does not become the primary application surface.
+Loading an existing project does not automatically open Setup. That behavior came
+from the retired Inspector tab model and is intentionally not preserved.
 
 ### Export transaction
 
@@ -164,19 +176,6 @@ serialized snapshot and republishes models/canvas state.
 Inference clears the object-edit undo stack. Model-generated replacement or
 re-segmentation is a different mutation boundary and must not be mixed with stale
 pre-inference snapshots.
-
-The target application-controller split remains:
-
-```text
-ProjectController
-AnnotationController  -> owns edit commands / undo policy
-InferenceController
-ExportController
-```
-
-`AppController` is still oversized. Decomposition is complete only when behavior
-moves behind these use-case boundaries and the compatibility adapter can be deleted;
-merely distributing the same methods into smaller files does not count.
 
 ## Commands and window semantics
 
@@ -229,13 +228,14 @@ never mutate annotation data.
 Tests assert user-visible outcomes rather than obsolete widget trees. Current UI
 acceptance coverage targets central canvas/docks, tool modes, drawing-class
 independence, labels, zoom/pan, fullscreen semantics, undo snapshots, transactional
-Setup, Export preflight, compact command surfaces, and coordinator boundaries.
+Setup, Export preflight, compact command surfaces, coordinator boundaries, and
+active controller routing.
 
 GitHub Actions runs compile and the offscreen suite for every pushed branch commit.
-The test job intentionally does not load a real SAM3 model; Ultralytics imports are
-lazy and predictor behavior is tested through fakes. Production requirements are
-still resolved in CI, while real checkpoint/CUDA verification remains a separate
-hardware acceptance step.
+The test job installs the Linux EGL runtime required by PySide6. It intentionally
+does not load a real SAM3 model; Ultralytics imports are lazy and predictor behavior
+is tested through fakes. Production requirements are still dependency-resolved in
+CI, while real checkpoint/CUDA verification remains a separate hardware step.
 
 Offscreen Qt tests are necessary but not sufficient. Visible Windows verification
 is required for native title bar behavior, maximize/fullscreen restoration, dock
