@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QTimer, Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
@@ -83,8 +83,6 @@ class MainWindow(QMainWindow):
         )
         self.annotation_dock.setMinimumWidth(280)
 
-        # The drawing class must be visible where drawing happens. The combo boxes
-        # share the same class model, but keep independent current selections.
         self.canvas_area.active_class_combo.setModel(self.annotation.class_combo.model())
         self.canvas_area.active_class_combo.currentIndexChanged.connect(
             self.annotation.class_combo.setCurrentIndex
@@ -96,11 +94,15 @@ class MainWindow(QMainWindow):
         self.results_dialog = self._dialog("Export", self.results, 500, 680)
         self.inspector = _SurfaceRouter(self)
 
+        self.actions.project_settings.triggered.connect(self.show_setup)
         self.actions.zoom_in.triggered.connect(self.canvas.zoom_in)
         self.actions.zoom_out.triggered.connect(self.canvas.zoom_out)
         self.actions.actual_size.triggered.connect(self.canvas.actual_size)
         self.actions.focus_workspace.toggled.connect(self.set_focus_workspace)
         self.actions.fullscreen.toggled.connect(self.set_fullscreen)
+        self.actions.mark_reviewed.triggered.connect(
+            lambda: QTimer.singleShot(0, self._advance_after_review)
+        )
 
         self.setStatusBar(QStatusBar(self))
         self.status_context = ElidedLabel("No image | 0 annotations | saved")
@@ -177,6 +179,15 @@ class MainWindow(QMainWindow):
             self.showFullScreen()
         else:
             self.showNormal()
+
+    def _advance_after_review(self):
+        if self.controller is None:
+            return
+        image = self.controller.current_image
+        if image is None or getattr(image.status, "value", None) != "reviewed":
+            return
+        if self.actions.next_image.isEnabled():
+            self.dataset.select_relative(1)
 
     def set_message(self, message, timeout=0):
         self.statusBar().showMessage(str(message), int(timeout))
