@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication
 from domain import Annotation, AnnotationSource, ImageRecord, ImageStatus
 from gui.controllers import WorkstationController
 from gui.main_window import MainWindow
-from gui.undo import AnnotationSnapshotCommand
+from gui.undo import AnnotationSnapshotCommand, AnnotationStateSnapshot
 from services.project_service import create_project
 
 
@@ -50,10 +50,10 @@ class AnnotationSnapshotUndoTests(unittest.TestCase):
                 )
             ],
         )
-        before = image.to_dict()
+        before = AnnotationStateSnapshot.capture(image)
         image.annotations[0].mark_deleted()
         image.mark_edited()
-        after = image.to_dict()
+        after = AnnotationStateSnapshot.capture(image)
         callbacks = []
         stack = QUndoStack()
 
@@ -86,9 +86,9 @@ class AnnotationSnapshotUndoTests(unittest.TestCase):
 
     def test_snapshot_restores_distinct_before_and_after_selection(self):
         image = ImageRecord("image.png", 1, width=100, height=80)
-        before = image.to_dict()
+        before = AnnotationStateSnapshot.capture(image)
         added = image.add_manual_annotation(0, "person", (2, 3, 20, 30))
-        after = image.to_dict()
+        after = AnnotationStateSnapshot.capture(image)
         callbacks = []
         stack = QUndoStack()
         stack.push(
@@ -112,9 +112,9 @@ class AnnotationSnapshotUndoTests(unittest.TestCase):
 
     def test_snapshot_restores_added_annotation_list(self):
         image = ImageRecord("image.png", 3, width=100, height=80)
-        before = image.to_dict()
+        before = AnnotationStateSnapshot.capture(image)
         image.add_manual_annotation(0, "person", (2, 3, 20, 30))
-        after = image.to_dict()
+        after = AnnotationStateSnapshot.capture(image)
         stack = QUndoStack()
         stack.push(
             AnnotationSnapshotCommand(
@@ -136,9 +136,9 @@ class AnnotationSnapshotUndoTests(unittest.TestCase):
 
     def test_annotation_snapshot_never_restores_unrelated_image_metadata(self):
         image = ImageRecord("original.png", 5, width=100, height=80)
-        before = image.to_dict()
+        before = AnnotationStateSnapshot.capture(image)
         image.add_manual_annotation(0, "person", (2, 3, 20, 30))
-        after = image.to_dict()
+        after = AnnotationStateSnapshot.capture(image)
         stack = QUndoStack()
         stack.push(
             AnnotationSnapshotCommand(
@@ -193,7 +193,6 @@ class AnnotationSnapshotUndoTests(unittest.TestCase):
 
             window.actions.undo.trigger()
             QCoreApplication.processEvents()
-            QCoreApplication.processEvents()
             self.assertFalse(controller.dirty)
             self.assertEqual(controller.current_image.active_annotations[0].box_xyxy, original_box)
 
@@ -203,7 +202,6 @@ class AnnotationSnapshotUndoTests(unittest.TestCase):
             window.canvas.annotation_changed.emit(annotation.id, (14, 14, 48, 48))
             QCoreApplication.processEvents()
             window.actions.undo.trigger()
-            QCoreApplication.processEvents()
             QCoreApplication.processEvents()
             self.assertTrue(controller.dirty)
 
