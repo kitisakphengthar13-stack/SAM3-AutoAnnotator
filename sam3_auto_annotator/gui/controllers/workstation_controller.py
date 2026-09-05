@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer
 
-from sam3_auto_annotator.app_paths import MODELS_DIR, discover_default_model
+from sam3_auto_annotator.app_paths import discover_default_model
 from sam3_auto_annotator.core import ImageStatus
 from sam3_auto_annotator.gui.controllers.annotation_controller import AnnotationController
 from sam3_auto_annotator.gui.controllers.export_controller import ExportController
@@ -16,11 +16,8 @@ from sam3_auto_annotator.gui.controllers.state import UiMode
 from sam3_auto_annotator.gui.tasks.inference_task_manager import InferenceTaskManager
 from sam3_auto_annotator.services.prediction_service import PredictionService
 from sam3_auto_annotator.services.project_service import (
-    create_project,
-    load_state,
     parse_prompts,
     remaining_prediction_targets,
-    save_state_to_output,
 )
 from sam3_auto_annotator.storage.image_catalog import validate_model_path
 
@@ -29,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class WorkstationController(QObject):
-    """Compose project, annotation, inference, export, and presentation workflows."""
+    """Compose focused use-case controllers and shared workstation policy."""
 
     def __init__(
         self,
@@ -169,79 +166,27 @@ class WorkstationController(QObject):
         annotation = image.annotation_by_id(self.selected_annotation_id)
         return annotation if annotation is not None and annotation.is_active else None
 
+    # Project workflow ----------------------------------------------------
     def _last_directory(self):
-        return self.settings.last_directory()
+        return self.projects.last_directory()
 
     def _remember_path(self, path):
-        if not path:
-            return
-        candidate = Path(path)
-        self.settings.set_last_directory(
-            candidate if candidate.is_dir() else candidate.parent
-        )
+        return self.projects.remember_path(path)
 
     def _can_replace_project(self):
-        if not self.dirty:
-            return True
-        decision = self.view.ask_unsaved_changes()
-        if decision == "save":
-            self.save_project()
-            return not self.dirty
-        return decision == "discard"
+        return self.projects.can_replace_project()
 
     def open_image(self):
-        path = self.view.choose_image(self._last_directory())
-        if not path or not self._can_replace_project():
-            return
-        self._remember_path(path)
-        self._create_project(path)
+        return self.projects.open_image()
 
     def open_folder(self):
-        path = self.view.choose_folder("Open Image Folder", self._last_directory())
-        if not path or not self._can_replace_project():
-            return
-        self._remember_path(path)
-        self._create_project(path)
+        return self.projects.open_folder()
 
     def _create_project(self, input_path):
-        try:
-            model_path = self.view.setup.model_path_edit.text().strip() or None
-            project = create_project(
-                input_path=input_path,
-                prompts=parse_prompts(self.view.setup.prompts_text()),
-                model_path=model_path,
-                confidence=self.view.setup.conf_edit.value(),
-                half=self.view.setup.half_check.isChecked(),
-            )
-            self._load_project(project)
-            self.view.set_message(
-                "Configure classes, then run SAM3 or draw boxes manually."
-            )
-        except Exception as exc:
-            self._report_error(
-                "Could Not Open Input",
-                "The selected image or folder could not be opened.",
-                "Check that it exists and contains supported image files, then retry.",
-                exc,
-            )
+        return self.projects.create_project(input_path)
 
     def open_project(self):
-        path = self.view.choose_project(self._last_directory())
-        if not path or not self._can_replace_project():
-            return
-        try:
-            project = load_state(path)
-            self._remember_path(path)
-            self._load_project(project, state_path=Path(path))
-            self.view.results.set_status("Project loaded. Continue reviewing or export.")
-            self.view.set_message("Annotation project loaded.")
-        except Exception as exc:
-            self._report_error(
-                "Could Not Open Project",
-                "The annotation project could not be loaded.",
-                "Choose a valid annotation_state.json file or restore a known-good copy.",
-                exc,
-            )
+        return self.projects.open_project()
 
     def _load_project(self, project, state_path=None):
         return self.projects.load_project(project, state_path)
@@ -250,95 +195,30 @@ class WorkstationController(QObject):
         return self.projects.import_yolo()
 
     def browse_model(self):
-        current = self.view.setup.model_path_edit.text().strip()
-        start = str(Path(current).parent) if current else str(MODELS_DIR)
-        path = self.view.choose_model(start)
-        if path:
-            self._remember_path(path)
-            self.view.setup.model_path_edit.setText(path)
+        return self.projects.browse_model()
 
     def browse_output(self):
-        current = self.view.setup.output_dir_edit.text().strip()
-        path = self.view.choose_folder(
-            "Select Output Folder",
-            current or self._last_directory(),
-        )
-        if path:
-            self._remember_path(path)
-            self.view.setup.output_dir_edit.setText(path)
+        return self.projects.browse_output()
 
     def settings_changed(self):
-        if self._rendering:
-            return
-        prompts = parse_prompts(self.view.setup.prompts_text())
-        if self.project is not None:
-            prompt_error = self._prompt_validation_error(prompts)
-            self.view.annotation.set_classes(
-                self.project.prompts if prompt_error else prompts
-            )
-            changed = self._apply_settings_if_valid(
-                prompts,
-                prompts_valid=prompt_error is None,
-            )
-            if changed:
-                self._mark_dirty(refresh=False)
-        else:
-            self.view.annotation.set_classes(prompts)
-        self._update_actions()
-        self._update_context()
+        return self.projects.settings_changed()
 
     def _prompt_validation_error(self, prompts):
-        if self.project is None:
-            return None
-        used_names = {item.class_name for item in self.project.active_annotations()}
-        missing = sorted(used_names.difference(prompts))
-        if not missing:
-            return None
-        return (
-            "Classes in use cannot be removed: "
-            + ", ".join(missing)
-            + ". Restore them or change those annotations first."
-        )
+        return self.projects.prompt_validation_error(prompts)
 
     def _apply_settings_if_valid(self, prompts, *, prompts_valid=None):
-        project = self.project
-        if project is None:
-            return False
-        if prompts_valid is None:
-            prompts_valid = self._prompt_validation_error(prompts) is None
-        changed = False
-        if prompts_valid and prompts != project.prompts:
-            project.prompts = list(prompts)
-            for annotation in project.active_annotations():
-                annotation.class_id = project.class_map[annotation.class_name]
-            changed = True
-
-        model_path = self.view.setup.model_path_edit.text().strip() or None
-        confidence = self.view.setup.conf_edit.value()
-        half = self.view.setup.half_check.isChecked()
-        if project.model_path != model_path:
-            project.model_path = model_path
-            changed = True
-        if project.confidence != confidence:
-            project.confidence = confidence
-            changed = True
-        if project.half != half:
-            project.half = half
-            changed = True
-        return changed
+        return self.projects.apply_settings_if_valid(
+            prompts,
+            prompts_valid=prompts_valid,
+        )
 
     def _sync_project_settings(self, require_prompts=False):
-        if self.project is None:
-            raise RuntimeError("No project is open.")
-        prompts = parse_prompts(self.view.setup.prompts_text())
-        if require_prompts and not prompts:
-            raise ValueError("Enter at least one class prompt before running SAM3.")
-        prompt_error = self._prompt_validation_error(prompts)
-        if prompt_error:
-            raise ValueError(prompt_error)
-        self._apply_settings_if_valid(prompts, prompts_valid=True)
-        return prompts
+        return self.projects.sync_project_settings(require_prompts=require_prompts)
 
+    def save_project(self):
+        return self.projects.save_project()
+
+    # Dataset and image presentation -------------------------------------
     def select_image(self, image_index):
         if self.project is None:
             return
@@ -612,30 +492,7 @@ class WorkstationController(QObject):
             self._close_pending = False
             QTimer.singleShot(0, self.view.close)
 
-    # Save/export workflow ------------------------------------------------
-    def save_project(self):
-        if self.project is None:
-            return
-        try:
-            self._sync_project_settings()
-            output_dir = self._output_dir()
-            path = save_state_to_output(self.project, output_dir)
-            self.current_state_path = Path(path)
-            self._saved_output_dir = Path(output_dir)
-            self.dirty = False
-            self.view.results.set_status("Project state saved.")
-            self.view.results.set_output_dir(output_dir)
-            self.view.set_message(f"Saved project to {path}")
-            self._update_actions()
-            self._update_context()
-        except Exception as exc:
-            self._report_error(
-                "Could Not Save Project",
-                "The annotation project could not be saved.",
-                "Check the output folder permissions and available disk space, then retry.",
-                exc,
-            )
-
+    # Export workflow -----------------------------------------------------
     def export_labels(self):
         return self.exports.export_labels()
 
