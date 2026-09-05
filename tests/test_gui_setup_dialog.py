@@ -1,5 +1,6 @@
 import os
 import unittest
+from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -51,6 +52,34 @@ class SetupDialogTests(unittest.TestCase):
         self.assertEqual(commits, [True])
         self.assertFalse(self.window.setup_dialog.isVisible())
         self.assertEqual(self.window.setup.prompts_text(), "person")
+
+    def test_validation_failure_blocks_commit_signal_entirely(self):
+        commits = []
+        updates = []
+        self.window.setup.settings_changed.connect(lambda: commits.append(True))
+        self.window.controller = SimpleNamespace(
+            project=object(),
+            _prompt_validation_error=lambda _prompts: "car is still in use",
+            _update_actions=lambda: updates.append("actions"),
+            _update_context=lambda: updates.append("context"),
+        )
+        self.window.setup.prompts_edit.setPlainText("car")
+        self.window.show_setup()
+        QCoreApplication.processEvents()
+
+        self.window.setup.prompts_edit.setPlainText("truck")
+        self.window.setup.model_path_edit.setText("draft-model.pt")
+        self.window.setup.conf_edit.setValue(0.85)
+        self.window.setup.apply_button.click()
+        QCoreApplication.processEvents()
+
+        self.assertEqual(commits, [])
+        self.assertTrue(self.window.setup_dialog.isVisible())
+        self.assertEqual(
+            self.window.setup.prompt_validation_label.text(),
+            "car is still in use",
+        )
+        self.assertEqual(updates, ["actions", "context"])
 
     def test_window_close_discards_unapplied_setup_changes(self):
         self.window.setup.model_path_edit.setText("baseline.pt")
