@@ -14,7 +14,6 @@ class AnnotationHistoryCoordinator:
         self.stack = QUndoStack(window)
         self._project = None
         self._pending_capture = None
-        self._draw_class_restore = None
         self._connect()
 
     def _connect(self):
@@ -34,7 +33,6 @@ class AnnotationHistoryCoordinator:
                 lambda _checked=False, label=text: self.begin_edit(label)
             )
 
-        self.window.canvas.box_drawn.connect(self._prepare_active_class_for_draw)
         self.window.canvas.box_drawn.connect(
             lambda _box: self.begin_edit("Add annotation")
         )
@@ -116,27 +114,3 @@ class AnnotationHistoryCoordinator:
         mode = getattr(getattr(controller, "mode", None), "value", "")
         if mode in {"predicting", "batch", "resegmenting"}:
             self.stack.clear()
-
-    def _prepare_active_class_for_draw(self, _box):
-        """Bridge legacy controller class lookup until it reads active class directly."""
-        controller = self.window.controller
-        image = controller.current_image if controller is not None else None
-        if image is None:
-            return
-        previous_index = self.window.annotation.class_combo.currentIndex()
-        previous_count = len(image.annotations)
-        self.window.annotation.class_combo.setCurrentIndex(
-            self.window.canvas_area.active_class_combo.currentIndex()
-        )
-        self._draw_class_restore = (image, previous_count, previous_index)
-        QTimer.singleShot(0, self._restore_draw_class_if_failed)
-
-    def _restore_draw_class_if_failed(self):
-        restore = self._draw_class_restore
-        self._draw_class_restore = None
-        controller = self.window.controller
-        if restore is None or controller is None:
-            return
-        image, previous_count, previous_index = restore
-        if controller.current_image is image and len(image.annotations) == previous_count:
-            self.window.annotation.class_combo.setCurrentIndex(previous_index)
