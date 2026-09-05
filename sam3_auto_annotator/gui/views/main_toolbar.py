@@ -30,6 +30,9 @@ class CommandBar(QToolBar):
         ):
             self.addAction(action)
         self.addSeparator()
+        self.addAction(actions.undo)
+        self.addAction(actions.redo)
+        self.addSeparator()
         self.addAction(actions.project_settings)
         self.addAction(actions.export)
 
@@ -56,16 +59,23 @@ def build_menus(window, actions):
     exit_action.triggered.connect(window.close)
     file_menu.addAction(exit_action)
 
+    edit_menu = menu_bar.addMenu("&Edit")
+    edit_menu.addAction(actions.undo)
+    edit_menu.addAction(actions.redo)
+    edit_menu.addSeparator()
+    edit_menu.addAction(actions.delete_annotation)
+
     annotation_menu = menu_bar.addMenu("&Annotation")
     for action in (
         actions.run_current,
         actions.run_remaining,
+        actions.select_tool,
+        actions.pan_tool,
         actions.draw_box,
         actions.apply_box,
         actions.apply_class,
         actions.resegment,
         actions.reset_sam3,
-        actions.delete_annotation,
         actions.mark_reviewed,
     ):
         annotation_menu.addAction(action)
