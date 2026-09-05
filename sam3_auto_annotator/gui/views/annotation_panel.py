@@ -6,11 +6,9 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
     QGridLayout,
-    QGroupBox,
     QHeaderView,
     QHBoxLayout,
     QLabel,
-    QScrollArea,
     QTableView,
     QVBoxLayout,
     QWidget,
@@ -26,6 +24,8 @@ from sam3_auto_annotator.gui.widgets.numeric_field import NumericLineEdit
 
 
 class AnnotationPanel(QWidget):
+    """Object list first; selected-object controls stay compact and contextual."""
+
     annotation_selected = Signal(str)
     editing_changed = Signal()
 
@@ -33,53 +33,77 @@ class AnnotationPanel(QWidget):
         super().__init__(parent)
         self.setObjectName("annotationPanel")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(8)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(7)
 
-        image_group = QGroupBox("Current Image")
-        image_layout = QHBoxLayout(image_group)
+        header = QHBoxLayout()
+        title = QLabel("Objects")
+        title.setObjectName("sectionTitle")
+        header.addWidget(title)
+        header.addStretch(1)
         self.reviewed_button = action_button(actions.mark_reviewed)
-        image_layout.addWidget(self.reviewed_button)
-        image_layout.addStretch(1)
-        layout.addWidget(image_group)
+        header.addWidget(self.reviewed_button)
+        layout.addLayout(header)
 
-        selected_group = QGroupBox("Selected Annotation")
-        selected_layout = QVBoxLayout(selected_group)
-        selected_layout.setSpacing(7)
+        self.annotation_model = AnnotationTableModel(parent=self)
+        self.annotation_table = QTableView()
+        self.annotation_table.setObjectName("annotationTable")
+        self.annotation_table.setModel(self.annotation_model)
+        self.annotation_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.annotation_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.annotation_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.annotation_table.setAlternatingRowColors(True)
+        self.annotation_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.annotation_table.verticalHeader().setVisible(False)
+        header_view = self.annotation_table.horizontalHeader()
+        header_view.setSectionResizeMode(0, QHeaderView.Stretch)
+        for column in range(1, 4):
+            header_view.setSectionResizeMode(column, QHeaderView.ResizeToContents)
+        layout.addWidget(self.annotation_table, 1)
+
+        divider = QFrame()
+        divider.setFrameShape(QFrame.HLine)
+        divider.setFrameShadow(QFrame.Sunken)
+        layout.addWidget(divider)
 
         self.selection_label = QLabel("No annotation selected")
         self.selection_label.setObjectName("selectionTitle")
         self.selection_label.setWordWrap(True)
-        selected_layout.addWidget(self.selection_label)
+        layout.addWidget(self.selection_label)
 
         metadata = QGridLayout()
+        metadata.setHorizontalSpacing(8)
+        metadata.setVerticalSpacing(3)
         metadata.setColumnStretch(1, 1)
         metadata.addWidget(_field_label("Source"), 0, 0)
         self.source_label = QLabel("-")
         metadata.addWidget(self.source_label, 0, 1)
-        metadata.addWidget(_field_label("Confidence"), 1, 0)
+        metadata.addWidget(_field_label("Confidence"), 0, 2)
         self.confidence_label = QLabel("-")
-        metadata.addWidget(self.confidence_label, 1, 1)
-        metadata.addWidget(_field_label("Segmentation"), 2, 0)
+        metadata.addWidget(self.confidence_label, 0, 3)
+        metadata.addWidget(_field_label("Segmentation"), 1, 0)
         self.segmentation_label = QLabel("none")
         self.segmentation_label.setWordWrap(True)
-        metadata.addWidget(self.segmentation_label, 2, 1)
-        selected_layout.addLayout(metadata)
+        metadata.addWidget(self.segmentation_label, 1, 1, 1, 3)
+        layout.addLayout(metadata)
 
-        selected_layout.addWidget(_field_label("Class"))
+        class_row = QHBoxLayout()
+        class_row.setSpacing(5)
+        class_row.addWidget(_field_label("Class"))
         self.class_combo = QComboBox()
         self.class_combo.setAccessibleName("Selected annotation class")
         self.class_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
         )
-        self.class_combo.setMinimumContentsLength(10)
-        self.apply_class_button = action_button(actions.apply_class, stretch=True)
-        selected_layout.addWidget(self.class_combo)
-        selected_layout.addWidget(self.apply_class_button)
+        self.class_combo.setMinimumContentsLength(8)
+        class_row.addWidget(self.class_combo, 1)
+        self.apply_class_button = action_button(actions.apply_class)
+        class_row.addWidget(self.apply_class_button)
+        layout.addLayout(class_row)
 
         coordinates = QGridLayout()
-        coordinates.setHorizontalSpacing(6)
-        coordinates.setVerticalSpacing(5)
+        coordinates.setHorizontalSpacing(5)
+        coordinates.setVerticalSpacing(4)
         self.x1_edit = _coord_edit("Left x coordinate")
         self.y1_edit = _coord_edit("Top y coordinate")
         self.x2_edit = _coord_edit("Right x coordinate")
@@ -94,54 +118,23 @@ class AnnotationPanel(QWidget):
         coordinates.addWidget(self.y2_edit, 1, 3)
         coordinates.setColumnStretch(1, 1)
         coordinates.setColumnStretch(3, 1)
-        selected_layout.addLayout(coordinates)
+        layout.addLayout(coordinates)
 
-        self.apply_box_button = action_button(actions.apply_box, stretch=True)
-        self.delete_button = action_button(
-            actions.delete_annotation, "dangerButton", stretch=True
-        )
-        self.resegment_button = action_button(actions.resegment, stretch=True)
-        self.reset_sam3_button = action_button(actions.reset_sam3, stretch=True)
-        for button in (
-            self.apply_box_button,
-            self.resegment_button,
-            self.reset_sam3_button,
-            self.delete_button,
-        ):
-            selected_layout.addWidget(button)
-        selected_layout.addStretch(1)
-        self.editor_scroll = QScrollArea()
-        self.editor_scroll.setObjectName("annotationEditorScroll")
-        self.editor_scroll.setFrameShape(QFrame.NoFrame)
-        self.editor_scroll.setWidgetResizable(True)
-        self.editor_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.editor_scroll.setWidget(selected_group)
-        layout.addWidget(self.editor_scroll)
+        edit_row = QHBoxLayout()
+        edit_row.setSpacing(5)
+        self.apply_box_button = action_button(actions.apply_box)
+        self.resegment_button = action_button(actions.resegment)
+        edit_row.addWidget(self.apply_box_button)
+        edit_row.addWidget(self.resegment_button)
+        layout.addLayout(edit_row)
 
-        table_group = QGroupBox("Annotations on Current Image")
-        table_layout = QVBoxLayout(table_group)
-        self.annotation_model = AnnotationTableModel(parent=self)
-        self.annotation_table = QTableView()
-        self.annotation_table.setObjectName("annotationTable")
-        self.annotation_table.setModel(self.annotation_model)
-        self.annotation_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.annotation_table.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.annotation_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.annotation_table.setAlternatingRowColors(True)
-        self.annotation_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.annotation_table.verticalHeader().setVisible(False)
-        header = self.annotation_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Stretch)
-        for column in range(1, 4):
-            header.setSectionResizeMode(column, QHeaderView.ResizeToContents)
-        self.annotation_table.setMinimumHeight(
-            self.annotation_table.verticalHeader().defaultSectionSize() * 2
-            + header.sizeHint().height()
-            + self.annotation_table.frameWidth() * 2
-            + self.fontMetrics().lineSpacing()
-        )
-        table_layout.addWidget(self.annotation_table)
-        layout.addWidget(table_group, 1)
+        history_row = QHBoxLayout()
+        history_row.setSpacing(5)
+        self.reset_sam3_button = action_button(actions.reset_sam3)
+        self.delete_button = action_button(actions.delete_annotation, "dangerButton")
+        history_row.addWidget(self.reset_sam3_button)
+        history_row.addWidget(self.delete_button)
+        layout.addLayout(history_row)
 
         self.annotation_table.selectionModel().selectionChanged.connect(
             self._on_selection_changed
@@ -153,19 +146,6 @@ class AnnotationPanel(QWidget):
         for field in (self.x1_edit, self.y1_edit, self.x2_edit, self.y2_edit):
             field.textChanged.connect(lambda _text: self.editing_changed.emit())
         self.clear_details()
-        self._update_editor_height()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._update_editor_height()
-
-    def _update_editor_height(self):
-        line_height = self.fontMetrics().lineSpacing()
-        target = max(
-            line_height * 14,
-            min(line_height * 30, self.height() * 56 // 100),
-        )
-        self.editor_scroll.setFixedHeight(target)
 
     def set_classes(self, prompts):
         current = self.class_combo.currentText()
@@ -204,10 +184,10 @@ class AnnotationPanel(QWidget):
 
     def show_details(self, annotation):
         blockers = self._detail_signal_blockers()
-        self.selection_label.setText("Editing selected box")
+        self.selection_label.setText(f"Selected · {annotation.class_name}")
         self.source_label.setText(annotation.source.value)
         self.confidence_label.setText(
-            "-" if annotation.confidence is None else f"{annotation.confidence:.4f}"
+            "-" if annotation.confidence is None else f"{annotation.confidence:.3f}"
         )
         self.segmentation_label.setText(segmentation_status_text(annotation))
         for field, value in zip(
