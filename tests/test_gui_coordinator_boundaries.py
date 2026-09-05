@@ -49,9 +49,9 @@ class GuiCoordinatorBoundaryTests(unittest.TestCase):
             with self.subTest(name=retired_name):
                 self.assertFalse(hasattr(self.window, retired_name))
 
-    def test_history_does_not_own_active_class_bridge(self):
+    def test_active_class_compatibility_bridge_no_longer_exists(self):
         self.assertFalse(hasattr(self.window.history, "_draw_class_restore"))
-        self.assertTrue(
+        self.assertFalse(
             hasattr(self.window.annotation_interaction, "_draw_class_restore")
         )
 
