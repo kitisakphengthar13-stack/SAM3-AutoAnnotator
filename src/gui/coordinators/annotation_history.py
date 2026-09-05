@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QUndoStack
 
-from gui.undo import ImageSnapshotCommand
+from gui.undo import AnnotationSnapshotCommand
 
 
 @dataclass(frozen=True)
@@ -81,7 +81,7 @@ class AnnotationHistoryCoordinator:
         if capture.before == after:
             return False
         self.stack.push(
-            ImageSnapshotCommand(
+            AnnotationSnapshotCommand(
                 capture.image,
                 capture.before,
                 after,
