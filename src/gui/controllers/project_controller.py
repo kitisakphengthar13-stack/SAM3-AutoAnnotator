@@ -73,7 +73,7 @@ class ProjectController:
                 "Configure classes, then run SAM3 or draw boxes manually."
             )
         except Exception as exc:
-            host._report_error(
+            host.presentation.report_error(
                 "Could Not Open Input",
                 "The selected image or folder could not be opened.",
                 "Check that it exists and contains supported image files, then retry.",
@@ -92,7 +92,7 @@ class ProjectController:
             host.view.results.set_status("Project loaded. Continue reviewing or export.")
             host.view.set_message("Annotation project loaded.")
         except Exception as exc:
-            host._report_error(
+            host.presentation.report_error(
                 "Could Not Open Project",
                 "The annotation project could not be loaded.",
                 "Choose a valid annotation_state.json file or restore a known-good copy.",
@@ -124,7 +124,7 @@ class ProjectController:
         if not project.images:
             host.view.canvas.clear_image()
             host.view.annotation.set_annotations([])
-            host._clear_annotation_selection()
+            host.annotations.clear_selection()
             host.view.canvas_area.canvas_hint.setText(
                 "This project does not contain any images."
             )
@@ -140,8 +140,9 @@ class ProjectController:
         host.view.set_project_title(project.project_name or "Current project")
         host.view.results.reset(output_dir)
         host.view.dataset.select_first()
-        host._update_actions()
-        host._update_context()
+        host.presentation.update_actions()
+        host.presentation.update_context()
+        host.view.history.sync_project()
 
     def browse_model(self):
         host = self.host
@@ -178,11 +179,11 @@ class ProjectController:
                 prompts_valid=prompt_error is None,
             )
             if changed:
-                host._mark_dirty(refresh=False)
+                host.presentation.mark_dirty(refresh=False)
         else:
             host.view.annotation.set_classes(prompts)
-        host._update_actions()
-        host._update_context()
+        host.presentation.update_actions()
+        host.presentation.update_context()
 
     def prompt_validation_error(self, prompts):
         project = self.host.project
@@ -258,15 +259,15 @@ class ProjectController:
                 host.view.annotation.set_classes(host.project.prompts)
             finally:
                 host._rendering = False
-            host._mark_dirty(refresh=False)
+            host.presentation.mark_dirty(refresh=False)
             host.view.dataset.refresh()
-            host._render_current_annotations()
+            host.annotations.render_current_annotations()
             host.view.show_review()
             message = summary.to_message()
             host.view.results.set_status(message)
             host.view.set_message(message)
         except Exception as exc:
-            host._report_error(
+            host.presentation.report_error(
                 "Could Not Import YOLO Labels",
                 "The labels could not be imported into this project.",
                 "Check the label folder and YOLO detection format, then retry.",
@@ -279,18 +280,19 @@ class ProjectController:
             return
         try:
             self.sync_project_settings()
-            output_dir = host._output_dir()
+            output_dir = host.exports.output_dir()
             path = save_state_to_output(host.project, output_dir)
             host.current_state_path = Path(path)
             host._saved_output_dir = Path(output_dir)
             host.dirty = False
+            host.view.history.mark_clean()
             host.view.results.set_status("Project state saved.")
             host.view.results.set_output_dir(output_dir)
             host.view.set_message(f"Saved project to {path}")
-            host._update_actions()
-            host._update_context()
+            host.presentation.update_actions()
+            host.presentation.update_context()
         except Exception as exc:
-            host._report_error(
+            host.presentation.report_error(
                 "Could Not Save Project",
                 "The annotation project could not be saved.",
                 "Check the output folder permissions and available disk space, then retry.",
