@@ -59,9 +59,13 @@ class SetupDialogTests(unittest.TestCase):
         self.window.setup.settings_changed.connect(lambda: commits.append(True))
         self.window.controller = SimpleNamespace(
             project=object(),
-            _prompt_validation_error=lambda _prompts: "car is still in use",
-            _update_actions=lambda: updates.append("actions"),
-            _update_context=lambda: updates.append("context"),
+            projects=SimpleNamespace(
+                prompt_validation_error=lambda _prompts: "car is still in use",
+            ),
+            presentation=SimpleNamespace(
+                update_actions=lambda: updates.append("actions"),
+                update_context=lambda: updates.append("context"),
+            ),
         )
         self.window.setup.prompts_edit.setPlainText("car")
         self.window.show_setup()
