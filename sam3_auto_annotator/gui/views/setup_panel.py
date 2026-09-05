@@ -24,6 +24,8 @@ class SetupPanel(QWidget):
     browse_model_requested = Signal()
     browse_output_requested = Signal()
     settings_changed = Signal()
+    apply_requested = Signal()
+    cancel_requested = Signal()
 
     def __init__(self, actions, parent=None):
         super().__init__(parent)
@@ -43,7 +45,7 @@ class SetupPanel(QWidget):
         layout.setSpacing(10)
 
         guidance = QLabel(
-            "Configure the project, then review SAM3 drafts or draw boxes manually."
+            "Changes are staged here. Apply commits them to the project; Cancel discards them."
         )
         guidance.setObjectName("mutedLabel")
         guidance.setWordWrap(True)
@@ -87,7 +89,7 @@ class SetupPanel(QWidget):
         self.model_validation_label.setVisible(False)
         sam_layout.addRow("", self.model_validation_label)
 
-        self.prompts_edit = ClassPromptEditor(visible_rows=4)
+        self.prompts_edit = ClassPromptEditor(visible_rows=5)
         self.prompts_edit.setPlaceholderText("One class per line, or comma-separated")
         self.prompts_edit.setAccessibleName("SAM3 class prompts")
         sam_layout.addRow("Classes", self.prompts_edit)
@@ -113,8 +115,8 @@ class SetupPanel(QWidget):
         layout.addWidget(sam_group)
 
         note = QLabel(
-            "Editing a SAM3 box or class makes its segmentation stale. "
-            "Use Re-segment before segmentation export."
+            "Box or class edits invalidate segmentation. Re-segment those objects before "
+            "segmentation export when masks/polygons are required."
         )
         note.setObjectName("mutedLabel")
         note.setWordWrap(True)
@@ -125,26 +127,25 @@ class SetupPanel(QWidget):
 
         actions_footer = QWidget()
         actions_footer.setObjectName("panelActionFooter")
-        footer_layout = QVBoxLayout(actions_footer)
+        footer_layout = QHBoxLayout(actions_footer)
         footer_layout.setContentsMargins(12, 9, 12, 10)
         footer_layout.setSpacing(6)
-        self.run_button = action_button(
-            actions.run_current,
-            "primaryButton",
-            stretch=True,
-        )
-        self.run_all_button = action_button(actions.run_remaining, stretch=True)
-        footer_layout.addWidget(self.run_button)
-        footer_layout.addWidget(self.run_all_button)
+        footer_layout.addStretch(1)
+        self.cancel_button = QPushButton("Cancel")
+        self.apply_button = QPushButton("Apply")
+        self.apply_button.setObjectName("primaryButton")
+        footer_layout.addWidget(self.cancel_button)
+        footer_layout.addWidget(self.apply_button)
         outer.addWidget(actions_footer)
 
-        self.model_path_edit.textChanged.connect(self.settings_changed)
+        self.cancel_button.clicked.connect(
+            lambda _checked=False: self.cancel_requested.emit()
+        )
+        self.apply_button.clicked.connect(
+            lambda _checked=False: self.apply_requested.emit()
+        )
         self.model_path_edit.textChanged.connect(self.model_path_edit.setToolTip)
-        self.output_dir_edit.textChanged.connect(self.settings_changed)
         self.output_dir_edit.textChanged.connect(self.output_dir_edit.setToolTip)
-        self.prompts_edit.textChanged.connect(self.settings_changed)
-        self.conf_edit.valueChanged.connect(self.settings_changed)
-        self.half_check.toggled.connect(self.settings_changed)
 
     def set_project(self, project, output_dir):
         self.input_path_display.set_path(project.input_path)
@@ -155,6 +156,26 @@ class SetupPanel(QWidget):
         self.prompts_edit.setPlainText("\n".join(project.prompts))
         self.conf_edit.setValue(project.confidence)
         self.half_check.setChecked(project.half)
+
+    def snapshot(self):
+        return {
+            "output_dir": self.output_dir_edit.text(),
+            "model_path": self.model_path_edit.text(),
+            "prompts": self.prompts_edit.toPlainText(),
+            "confidence": self.conf_edit.value(),
+            "half": self.half_check.isChecked(),
+        }
+
+    def restore_snapshot(self, snapshot):
+        if not snapshot:
+            return
+        self.output_dir_edit.setText(snapshot["output_dir"])
+        self.model_path_edit.setText(snapshot["model_path"])
+        self.prompts_edit.setPlainText(snapshot["prompts"])
+        self.conf_edit.setValue(snapshot["confidence"])
+        self.half_check.setChecked(snapshot["half"])
+        self.set_prompt_error(None)
+        self.set_model_error(None)
 
     def prompts_text(self):
         return self.prompts_edit.toPlainText()
@@ -169,6 +190,7 @@ class SetupPanel(QWidget):
             self.prompts_edit,
             self.conf_edit,
             self.half_check,
+            self.apply_button,
         ):
             widget.setEnabled(enabled)
         self.output_dir_edit.setEnabled(enabled and project_open)
