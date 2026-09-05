@@ -61,6 +61,7 @@ class MainWindow(QMainWindow):
         self.ui_settings = None
         self.diagnostic_log_path = None
         self._focus_previous_visibility = (True, True)
+        self._fullscreen_restore_maximized = False
 
         self.actions = AppActions(self)
         self.exit_action = build_menus(self, self.actions)
@@ -75,13 +76,12 @@ class MainWindow(QMainWindow):
         self.dataset_dock = self._dock(
             "Dataset", "datasetDock", self.dataset, Qt.LeftDockWidgetArea
         )
-        self.dataset_dock.setMinimumWidth(190)
 
         self.annotation = AnnotationPanel(self.actions)
         self.annotation_dock = self._dock(
             "Objects", "objectsDock", self.annotation, Qt.RightDockWidgetArea
         )
-        self.annotation_dock.setMinimumWidth(280)
+        self.annotation.setMinimumWidth(280)
 
         self.canvas_area.active_class_combo.setModel(self.annotation.class_combo.model())
         self.canvas_area.active_class_combo.currentIndexChanged.connect(
@@ -95,6 +95,7 @@ class MainWindow(QMainWindow):
         self.inspector = _SurfaceRouter(self)
 
         self.actions.project_settings.triggered.connect(self.show_setup)
+        self.actions.fit.triggered.connect(self.canvas.fit_to_window)
         self.actions.zoom_in.triggered.connect(self.canvas.zoom_in)
         self.actions.zoom_out.triggered.connect(self.canvas.zoom_out)
         self.actions.actual_size.triggered.connect(self.canvas.actual_size)
@@ -103,6 +104,7 @@ class MainWindow(QMainWindow):
         self.actions.mark_reviewed.triggered.connect(
             lambda: QTimer.singleShot(0, self._advance_after_review)
         )
+        self._set_canvas_navigation_enabled(False)
 
         self.setStatusBar(QStatusBar(self))
         self.status_context = ElidedLabel("No image | 0 annotations | saved")
@@ -117,10 +119,11 @@ class MainWindow(QMainWindow):
         dock = QDockWidget(title, self)
         dock.setObjectName(object_name)
         dock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
+        features = QDockWidget.DockWidgetFeature
         dock.setFeatures(
-            QDockWidget.DockWidgetClosable
-            | QDockWidget.DockWidgetMovable
-            | QDockWidget.DockWidgetFloatable
+            features.DockWidgetClosable
+            | features.DockWidgetMovable
+            | features.DockWidgetFloatable
         )
         dock.setWidget(widget)
         self.addDockWidget(area, dock)
@@ -176,7 +179,11 @@ class MainWindow(QMainWindow):
 
     def set_fullscreen(self, enabled):
         if enabled:
+            self._fullscreen_restore_maximized = self.isMaximized()
             self.showFullScreen()
+            return
+        if self._fullscreen_restore_maximized:
+            self.showMaximized()
         else:
             self.showNormal()
 
@@ -188,6 +195,14 @@ class MainWindow(QMainWindow):
             return
         if self.actions.next_image.isEnabled():
             self.dataset.select_relative(1)
+
+    def _set_canvas_navigation_enabled(self, enabled):
+        for action in (
+            self.actions.zoom_in,
+            self.actions.zoom_out,
+            self.actions.actual_size,
+        ):
+            action.setEnabled(bool(enabled))
 
     def set_message(self, message, timeout=0):
         self.statusBar().showMessage(str(message), int(timeout))
@@ -201,11 +216,13 @@ class MainWindow(QMainWindow):
     def show_canvas(self, enabled):
         stack = self.canvas_area.workspace_stack
         stack.setCurrentWidget(self.canvas if enabled else self.canvas_area.empty_state)
+        self._set_canvas_navigation_enabled(enabled)
 
     def show_canvas_error(self, image_name, message):
         state = self.canvas_area.image_load_error
         state.set_error(image_name, message)
         self.canvas_area.workspace_stack.setCurrentWidget(state)
+        self._set_canvas_navigation_enabled(False)
 
     def choose_image(self, start_directory=""):
         return QFileDialog.getOpenFileName(
