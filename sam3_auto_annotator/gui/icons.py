@@ -31,7 +31,7 @@ ICON_SPECS = {
     "zoom_in": IconSpec(QIcon.ThemeIcon.ZoomIn, QStyle.SP_ArrowUp),
     "zoom_out": IconSpec(QIcon.ThemeIcon.ZoomOut, QStyle.SP_ArrowDown),
     "actual_size": IconSpec(QIcon.ThemeIcon.ZoomOriginal, QStyle.SP_DialogResetButton),
-    "fullscreen": IconSpec(QIcon.ThemeIcon.ViewFullscreen, QStyle.SP_TitleBarMaxButton),
+    "fullscreen": IconSpec(fallback=QStyle.SP_TitleBarMaxButton),
     "setup": IconSpec(resource="setup.svg"),
     "annotate": IconSpec(resource="review-box.svg"),
     "results": IconSpec(resource="results.svg"),
@@ -46,8 +46,12 @@ ICON_SPECS = {
 ICONS = {name: name for name in ICON_SPECS}
 
 
-def icon(name):
-    """Return a platform icon with a guaranteed QStyle fallback."""
+def icon(name, _legacy_color=None, _legacy_scale_factor=None, **_legacy_kwargs):
+    """Return a platform icon with a guaranteed QStyle fallback.
+
+    Legacy presentation arguments are accepted while old widgets are removed;
+    semantic icon choice no longer pretends those values recolor native icons.
+    """
     spec = ICON_SPECS.get(name)
     if spec is None:
         return QIcon()
