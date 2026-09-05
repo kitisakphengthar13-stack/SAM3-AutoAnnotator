@@ -237,7 +237,9 @@ class ProjectController:
         prompt_error = self.prompt_validation_error(prompts)
         if prompt_error:
             raise ValueError(prompt_error)
-        self.apply_settings_if_valid(prompts, prompts_valid=True)
+        changed = self.apply_settings_if_valid(prompts, prompts_valid=True)
+        if changed:
+            host.presentation.mark_dirty(refresh=False)
         return prompts
 
     def import_yolo(self):
