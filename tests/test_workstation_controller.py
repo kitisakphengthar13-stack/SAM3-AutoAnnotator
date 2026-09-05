@@ -15,6 +15,7 @@ from sam3_auto_annotator.gui.controllers import WorkstationController
 from sam3_auto_annotator.gui.controllers.annotation_controller import AnnotationController
 from sam3_auto_annotator.gui.controllers.export_controller import ExportController
 from sam3_auto_annotator.gui.controllers.inference_controller import InferenceController
+from sam3_auto_annotator.gui.controllers.presentation_controller import PresentationController
 from sam3_auto_annotator.gui.controllers.project_controller import ProjectController
 from sam3_auto_annotator.gui.main_window import MainWindow
 from sam3_auto_annotator.services.project_service import create_project
@@ -62,6 +63,7 @@ class WorkstationControllerTests(unittest.TestCase):
         self.assertIsInstance(self.controller.annotations, AnnotationController)
         self.assertIsInstance(self.controller.inference, InferenceController)
         self.assertIsInstance(self.controller.exports, ExportController)
+        self.assertIsInstance(self.controller.presentation, PresentationController)
 
     def test_legacy_app_controller_is_only_an_alias(self):
         self.assertIs(AppController, WorkstationController)
@@ -74,9 +76,18 @@ class WorkstationControllerTests(unittest.TestCase):
             AnnotationController,
             InferenceController,
             ExportController,
+            PresentationController,
         ):
             with self.subTest(controller=controller_type.__name__):
                 self.assertNotIn("inspector", inspect.getsource(controller_type))
+
+    def test_workstation_is_composition_not_reimplemented_use_cases(self):
+        source = inspect.getsource(WorkstationController)
+        self.assertNotIn("create_project(", source)
+        self.assertNotIn("save_state_to_output(", source)
+        self.assertNotIn("validate_model_path(", source)
+        self.assertNotIn("remaining_prediction_targets(", source)
+        self.assertNotIn("set_prompt_error(", source)
 
     def test_export_methods_route_through_extracted_controller(self):
         calls = []
