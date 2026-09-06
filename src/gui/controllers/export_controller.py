@@ -13,7 +13,6 @@ from services.project_service import (
     save_state_to_output,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -56,6 +55,7 @@ class ExportController:
                 f"Skipped segmentation: {skipped}"
             )
             host.view.results.set_status("Export complete.", counts)
+            host.view.results.set_phase("complete")
             host.view.results.set_output_paths(
                 output_dir=output_dir,
                 box_csv=result["box_csv"],
@@ -86,7 +86,9 @@ class ExportController:
         for key in ("yolo_detection_dir", "yolo_segmentation_dir"):
             path = result.get(key)
             if path is not None and not Path(path).is_dir():
-                raise FileNotFoundError(f"Expected export folder was not written: {path}")
+                raise FileNotFoundError(
+                    f"Expected export folder was not written: {path}"
+                )
 
     def save_preview(self, silent=False):
         host = self.host

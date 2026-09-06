@@ -22,6 +22,7 @@ from gui.models.image_list_model import (
 )
 from gui.widgets.action_button import action_button
 from gui.widgets.stat_strip import StatStrip
+from gui.widgets.list_delegates import DatasetDelegate
 
 
 class DatasetPanel(QWidget):
@@ -31,20 +32,11 @@ class DatasetPanel(QWidget):
     def __init__(self, actions, parent=None):
         super().__init__(parent)
         self.setObjectName("datasetPanel")
-        self.setMinimumWidth(180)
+        self.setMinimumWidth(200)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 8, 10)
         layout.setSpacing(8)
-
-        title_row = QHBoxLayout()
-        title = QLabel("Dataset")
-        title.setObjectName("sectionTitle")
-        title_row.addWidget(title)
-        title_row.addStretch(1)
-        title_row.addWidget(action_button(actions.previous_image, icon_only=True))
-        title_row.addWidget(action_button(actions.next_image, icon_only=True))
-        layout.addLayout(title_row)
 
         self.image_summary_label = QLabel("No project loaded")
         self.image_summary_label.setObjectName("mutedLabel")
@@ -77,14 +69,31 @@ class DatasetPanel(QWidget):
         self.image_list.setObjectName("imageList")
         self.image_list.setAccessibleName("Project images")
         self.image_list.setModel(self.filter_model)
+        self.image_list.setItemDelegate(DatasetDelegate(self.image_list))
+        self.image_list.setMouseTracking(True)
+        self.image_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.image_list.setUniformItemSizes(True)
         self.image_list.setSelectionMode(QAbstractItemView.SingleSelection)
         self.image_list.setTextElideMode(Qt.ElideMiddle)
         layout.addWidget(self.image_list, 1)
+        self.no_matches = QLabel("No images match your filter.")
+        self.no_matches.setObjectName("selectionEmpty")
+        self.no_matches.setWordWrap(True)
+        layout.addWidget(self.no_matches)
+        self.no_matches.hide()
+        self.filter_changed.connect(self._update_empty)
+        self.image_model.modelReset.connect(self._update_empty)
 
         self.search_edit.textChanged.connect(self._apply_search_filter)
         self.status_filter.currentIndexChanged.connect(self._apply_status_filter)
-        self.image_list.selectionModel().currentChanged.connect(self._on_current_changed)
+        self.image_list.selectionModel().currentChanged.connect(
+            self._on_current_changed
+        )
+
+    def _update_empty(self):
+        self.no_matches.setVisible(
+            bool(self.image_model.rowCount()) and self.filter_model.rowCount() == 0
+        )
 
     def _apply_status_filter(self):
         self.filter_model.set_status_filter(self.status_filter.currentData())
@@ -95,7 +104,10 @@ class DatasetPanel(QWidget):
         self.filter_changed.emit()
 
     def reset_filters(self, *, notify=True):
-        blockers = [QSignalBlocker(self.search_edit), QSignalBlocker(self.status_filter)]
+        blockers = [
+            QSignalBlocker(self.search_edit),
+            QSignalBlocker(self.status_filter),
+        ]
         self.search_edit.clear()
         self.status_filter.setCurrentIndex(0)
         del blockers

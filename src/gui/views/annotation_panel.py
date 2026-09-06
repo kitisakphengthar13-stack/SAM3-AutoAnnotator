@@ -1,31 +1,27 @@
 from __future__ import annotations
-
 from PySide6.QtCore import QItemSelection, QModelIndex, QSignalBlocker, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
-    QFrame,
     QGridLayout,
     QHeaderView,
     QHBoxLayout,
     QLabel,
+    QScrollArea,
     QTableView,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
-
 from domain.segmentation import segmentation_status_text
-from gui.models.annotation_table_model import (
-    ANNOTATION_ID_ROLE,
-    AnnotationTableModel,
-)
+from gui.icons import icon
+from gui.models.annotation_table_model import ANNOTATION_ID_ROLE, AnnotationTableModel
 from gui.widgets.action_button import action_button
+from gui.widgets.list_delegates import ObjectDelegate
 from gui.widgets.numeric_field import NumericLineEdit
 
 
 class AnnotationPanel(QWidget):
-    """Object list first; selected-object controls stay compact and contextual."""
-
     annotation_selected = Signal(str)
     editing_changed = Signal()
 
@@ -33,119 +29,149 @@ class AnnotationPanel(QWidget):
         super().__init__(parent)
         self.setObjectName("annotationPanel")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(7)
-
+        layout.setContentsMargins(12, 4, 12, 10)
+        layout.setSpacing(8)
         header = QHBoxLayout()
-        title = QLabel("Objects")
-        title.setObjectName("sectionTitle")
-        header.addWidget(title)
-        header.addStretch(1)
-        self.reviewed_button = action_button(actions.mark_reviewed)
-        header.addWidget(self.reviewed_button)
+        label = QLabel("IN THIS IMAGE")
+        label.setObjectName("mutedLabel")
+        header.addWidget(label)
+        header.addStretch()
+        self.count_label = QLabel("0")
+        self.count_label.setObjectName("countBadge")
+        header.addWidget(self.count_label)
         layout.addLayout(header)
 
         self.annotation_model = AnnotationTableModel(parent=self)
         self.annotation_table = QTableView()
         self.annotation_table.setObjectName("annotationTable")
+        self.annotation_table.setAccessibleName("Objects in this image")
         self.annotation_table.setModel(self.annotation_model)
+        self.annotation_table.setItemDelegate(ObjectDelegate(self.annotation_table))
         self.annotation_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.annotation_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.annotation_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.annotation_table.setAlternatingRowColors(True)
+        self.annotation_table.setMouseTracking(True)
+        self.annotation_table.setShowGrid(False)
         self.annotation_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.annotation_table.verticalHeader().setVisible(False)
-        header_view = self.annotation_table.horizontalHeader()
-        header_view.setSectionResizeMode(0, QHeaderView.Stretch)
+        self.annotation_table.verticalHeader().hide()
+        self.annotation_table.verticalHeader().setDefaultSectionSize(61)
+        self.annotation_table.horizontalHeader().hide()
+        self.annotation_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.Stretch
+        )
         for column in range(1, 4):
-            header_view.setSectionResizeMode(column, QHeaderView.ResizeToContents)
+            self.annotation_table.setColumnHidden(column, True)
         layout.addWidget(self.annotation_table, 1)
+        self.empty_label = QLabel(
+            "No objects yet.\nDraw a box or use Assist to get started."
+        )
+        self.empty_label.setObjectName("selectionEmpty")
+        self.empty_label.setWordWrap(True)
+        layout.addWidget(self.empty_label)
+        self.selection_hint = QLabel(
+            "Select a box on the image or an object above to edit it."
+        )
+        self.selection_hint.setObjectName("selectionEmpty")
+        self.selection_hint.setWordWrap(True)
+        layout.addWidget(self.selection_hint)
 
-        divider = QFrame()
-        divider.setFrameShape(QFrame.HLine)
-        divider.setFrameShadow(QFrame.Sunken)
-        layout.addWidget(divider)
-
+        self.details_scroll = QScrollArea()
+        self.details_scroll.setWidgetResizable(True)
+        self.details_scroll.setMaximumHeight(320)
+        self.details_scroll.setMinimumHeight(250)
+        self.details_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.details = QWidget()
+        details = QVBoxLayout(self.details)
+        details.setContentsMargins(0, 10, 0, 0)
+        details.setSpacing(10)
         self.selection_label = QLabel("No annotation selected")
         self.selection_label.setObjectName("selectionTitle")
         self.selection_label.setWordWrap(True)
-        layout.addWidget(self.selection_label)
-
-        metadata = QGridLayout()
-        metadata.setHorizontalSpacing(8)
-        metadata.setVerticalSpacing(3)
-        metadata.setColumnStretch(1, 1)
-        metadata.addWidget(_field_label("Source"), 0, 0)
+        details.addWidget(self.selection_label)
+        metadata = QHBoxLayout()
         self.source_label = QLabel("-")
-        metadata.addWidget(self.source_label, 0, 1)
-        metadata.addWidget(_field_label("Confidence"), 0, 2)
+        self.source_label.setObjectName("mutedLabel")
         self.confidence_label = QLabel("-")
-        metadata.addWidget(self.confidence_label, 0, 3)
-        metadata.addWidget(_field_label("Segmentation"), 1, 0)
+        self.confidence_label.setObjectName("mutedLabel")
+        metadata.addWidget(self.source_label)
+        metadata.addStretch()
+        metadata.addWidget(self.confidence_label)
+        details.addLayout(metadata)
         self.segmentation_label = QLabel("none")
+        self.segmentation_label.setObjectName("mutedLabel")
         self.segmentation_label.setWordWrap(True)
-        metadata.addWidget(self.segmentation_label, 1, 1, 1, 3)
-        layout.addLayout(metadata)
+        details.addWidget(self.segmentation_label)
 
-        class_row = QHBoxLayout()
-        class_row.setSpacing(5)
-        class_row.addWidget(_field_label("Class"))
+        row = QHBoxLayout()
         self.class_combo = QComboBox()
         self.class_combo.setAccessibleName("Selected annotation class")
         self.class_combo.setSizeAdjustPolicy(
-            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+            QComboBox.AdjustToMinimumContentsLengthWithIcon
         )
-        self.class_combo.setMinimumContentsLength(8)
-        class_row.addWidget(self.class_combo, 1)
-        self.apply_class_button = action_button(actions.apply_class)
-        class_row.addWidget(self.apply_class_button)
-        layout.addLayout(class_row)
+        self.class_combo.setMinimumContentsLength(6)
+        row.addWidget(self.class_combo, 1)
+        self.apply_class_button = action_button(actions.apply_class, icon_only=True)
+        row.addWidget(self.apply_class_button)
+        details.addLayout(row)
 
-        coordinates = QGridLayout()
-        coordinates.setHorizontalSpacing(5)
-        coordinates.setVerticalSpacing(4)
+        self.geometry_toggle = QToolButton()
+        self.geometry_toggle.setText("Box coordinates")
+        self.geometry_toggle.setObjectName("quietButton")
+        self.geometry_toggle.setCheckable(True)
+        self.geometry_toggle.setIcon(icon("next"))
+        self.geometry_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.geometry_toggle.setAccessibleName("Show or hide exact box coordinates")
+        details.addWidget(self.geometry_toggle)
+        self.coordinates_widget = QWidget()
+        coordinates = QGridLayout(self.coordinates_widget)
+        coordinates.setContentsMargins(0, 0, 0, 0)
+        coordinates.setSpacing(6)
         self.x1_edit = _coord_edit("Left x coordinate")
         self.y1_edit = _coord_edit("Top y coordinate")
         self.x2_edit = _coord_edit("Right x coordinate")
         self.y2_edit = _coord_edit("Bottom y coordinate")
-        coordinates.addWidget(_field_label("x1"), 0, 0)
-        coordinates.addWidget(self.x1_edit, 0, 1)
-        coordinates.addWidget(_field_label("y1"), 0, 2)
-        coordinates.addWidget(self.y1_edit, 0, 3)
-        coordinates.addWidget(_field_label("x2"), 1, 0)
-        coordinates.addWidget(self.x2_edit, 1, 1)
-        coordinates.addWidget(_field_label("y2"), 1, 2)
-        coordinates.addWidget(self.y2_edit, 1, 3)
-        coordinates.setColumnStretch(1, 1)
-        coordinates.setColumnStretch(3, 1)
-        layout.addLayout(coordinates)
+        for row_index, fields in enumerate(
+            ((self.x1_edit, self.y1_edit), (self.x2_edit, self.y2_edit))
+        ):
+            for column, field in enumerate(fields):
+                coordinates.addWidget(
+                    _field_label(("x" if column == 0 else "y") + str(row_index + 1)),
+                    row_index * 2,
+                    column,
+                )
+                coordinates.addWidget(field, row_index * 2 + 1, column)
+        self.apply_box_button = action_button(actions.apply_box, stretch=True)
+        coordinates.addWidget(self.apply_box_button, 4, 0, 1, 2)
+        details.addWidget(self.coordinates_widget)
+        self.coordinates_widget.hide()
+        self.geometry_toggle.toggled.connect(self._toggle_coordinates)
 
-        edit_row = QHBoxLayout()
-        edit_row.setSpacing(5)
-        self.apply_box_button = action_button(actions.apply_box)
-        self.resegment_button = action_button(actions.resegment)
-        edit_row.addWidget(self.apply_box_button)
-        edit_row.addWidget(self.resegment_button)
-        layout.addLayout(edit_row)
-
-        history_row = QHBoxLayout()
-        history_row.setSpacing(5)
-        self.reset_sam3_button = action_button(actions.reset_sam3)
-        self.delete_button = action_button(actions.delete_annotation, "dangerButton")
-        history_row.addWidget(self.reset_sam3_button)
-        history_row.addWidget(self.delete_button)
-        layout.addLayout(history_row)
-
+        row = QHBoxLayout()
+        self.resegment_button = action_button(actions.resegment, stretch=True)
+        self.delete_button = action_button(
+            actions.delete_annotation, "dangerButton", icon_only=True
+        )
+        self.reset_sam3_button = action_button(actions.reset_sam3, icon_only=True)
+        row.addWidget(self.resegment_button, 1)
+        row.addWidget(self.reset_sam3_button)
+        row.addWidget(self.delete_button)
+        details.addLayout(row)
+        self.details_scroll.setWidget(self.details)
+        layout.addWidget(self.details_scroll)
         self.annotation_table.selectionModel().selectionChanged.connect(
             self._on_selection_changed
         )
         self.class_combo.currentIndexChanged.connect(
-            lambda _index: self.editing_changed.emit()
+            lambda _: self.editing_changed.emit()
         )
         self.class_combo.currentTextChanged.connect(self.class_combo.setToolTip)
         for field in (self.x1_edit, self.y1_edit, self.x2_edit, self.y2_edit):
-            field.textChanged.connect(lambda _text: self.editing_changed.emit())
+            field.textChanged.connect(lambda _: self.editing_changed.emit())
         self.clear_details()
+
+    def _toggle_coordinates(self, checked):
+        self.coordinates_widget.setVisible(checked)
+        self.geometry_toggle.setIcon(icon("down" if checked else "next"))
 
     def set_classes(self, prompts):
         current = self.class_combo.currentText()
@@ -161,7 +187,10 @@ class AnnotationPanel(QWidget):
         self.class_combo.setToolTip(self.class_combo.currentText())
 
     def set_annotations(self, annotations):
+        annotations = list(annotations)
         self.annotation_model.set_items(annotations)
+        self.count_label.setText(str(len(annotations)))
+        self.empty_label.setVisible(not annotations)
 
     def refresh_annotation(self, annotation_id=None):
         self.annotation_model.refresh(annotation_id)
@@ -183,6 +212,8 @@ class AnnotationPanel(QWidget):
         return True
 
     def show_details(self, annotation):
+        self.details_scroll.show()
+        self.selection_hint.hide()
         blockers = self._detail_signal_blockers()
         self.selection_label.setText(f"Selected · {annotation.class_name}")
         self.source_label.setText(annotation.source.value)
@@ -202,6 +233,8 @@ class AnnotationPanel(QWidget):
         del blockers
 
     def clear_details(self):
+        self.details_scroll.hide()
+        self.selection_hint.setVisible(self.annotation_model.rowCount() > 0)
         blockers = self._detail_signal_blockers()
         self.selection_label.setText("No annotation selected")
         self.source_label.setText("-")

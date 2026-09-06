@@ -1,5 +1,14 @@
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QImage,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QPolygonF,
+)
 from PySide6.QtWidgets import (
     QGraphicsItem,
     QGraphicsPathItem,
@@ -15,7 +24,6 @@ from domain.segmentation import (
     polygon_xyn_to_pixels,
 )
 
-
 MIN_BOX_SIZE = 2.0
 HANDLE_SIZE = 8.0
 HANDLE_MARGIN = 4.0
@@ -25,12 +33,12 @@ BBOX_Z = 10
 HANDLE_Z = 20
 
 BOX_COLORS = [
-    QColor("#2563eb"),
-    QColor("#16a34a"),
-    QColor("#dc2626"),
-    QColor("#9333ea"),
-    QColor("#ea580c"),
-    QColor("#0891b2"),
+    QColor("#78a9ff"),
+    QColor("#63d8bb"),
+    QColor("#ff8c95"),
+    QColor("#c4a7fa"),
+    QColor("#f4c078"),
+    QColor("#78d5ed"),
 ]
 
 
@@ -109,17 +117,21 @@ class AnnotationRectItem(QGraphicsRectItem):
 
     def apply_style(self, selected):
         color = BOX_COLORS[self.class_id % len(BOX_COLORS)]
-        pen = QPen(QColor("#facc15") if selected else color, 3 if selected else 2)
+        pen = QPen(QColor("#ffffff") if selected else color, 3 if selected else 2)
         pen.setCosmetic(True)
         self.setPen(pen)
         fill = QColor(color)
-        fill.setAlpha(28 if not selected else 42)
+        fill.setAlpha(10 if not selected else 18)
         self.setBrush(fill)
         for handle in self._handle_items.values():
             handle.setVisible(bool(selected))
 
     def boundingRect(self):
-        return super().boundingRect().adjusted(-HANDLE_MARGIN, -HANDLE_MARGIN, HANDLE_MARGIN, HANDLE_MARGIN)
+        return (
+            super()
+            .boundingRect()
+            .adjusted(-HANDLE_MARGIN, -HANDLE_MARGIN, HANDLE_MARGIN, HANDLE_MARGIN)
+        )
 
     def paint(self, painter, option, widget=None):
         painter.setPen(self.pen())
@@ -141,7 +153,9 @@ class AnnotationRectItem(QGraphicsRectItem):
             return
 
         self.setSelected(True)
-        self._active_handle = self._handle_at(event.pos()) if self.isSelected() else None
+        self._active_handle = (
+            self._handle_at(event.pos()) if self.isSelected() else None
+        )
         self._moving = self._active_handle is None and self.rect().contains(event.pos())
         self._press_scene_pos = event.scenePos()
         self._press_scene_rect = self._scene_rect()
@@ -382,14 +396,18 @@ class ImageCanvas(QGraphicsView):
                 self._scene.addItem(item)
 
             self._selected_annotation_id = (
-                previous_selected_id if previous_selected_id in self._items_by_id else None
+                previous_selected_id
+                if previous_selected_id in self._items_by_id
+                else None
             )
             self._apply_selection_to_items(self._selected_annotation_id)
         finally:
             self._scene.blockSignals(False)
         self._refresh_segmentation_styles(self._selected_annotation_id)
 
-    def set_overlay_visibility(self, show_boxes=None, show_masks=None, show_polygons=None):
+    def set_overlay_visibility(
+        self, show_boxes=None, show_masks=None, show_polygons=None
+    ):
         if show_boxes is not None:
             self._show_boxes = bool(show_boxes)
         if show_masks is not None:
@@ -422,7 +440,9 @@ class ImageCanvas(QGraphicsView):
         self._scene.blockSignals(True)
         try:
             self._prune_item_registries()
-            self._selected_annotation_id = annotation_id if annotation_id in self._items_by_id else None
+            self._selected_annotation_id = (
+                annotation_id if annotation_id in self._items_by_id else None
+            )
             self._apply_selection_to_items(self._selected_annotation_id)
         finally:
             self._scene.blockSignals(False)
@@ -457,12 +477,23 @@ class ImageCanvas(QGraphicsView):
     def wheelEvent(self, event):
         if self._pixmap_item is None:
             return
+        delta = event.angleDelta().y()
+        if not delta:
+            event.accept()
+            return
         self._auto_fit = False
-        factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
-        self.scale(factor, factor)
+        factor = 1.15 if delta > 0 else 1 / 1.15
+        current = self.transform().m11()
+        target = max(0.05, min(20.0, current * factor))
+        self.scale(target / current, target / current)
+        event.accept()
 
     def mousePressEvent(self, event):
-        if self._draw_mode and event.button() == Qt.LeftButton and self._pixmap_item is not None:
+        if (
+            self._draw_mode
+            and event.button() == Qt.LeftButton
+            and self._pixmap_item is not None
+        ):
             point = self.mapToScene(event.position().toPoint())
             if self._image_rect.contains(point):
                 self._drawing = True
@@ -494,7 +525,9 @@ class ImageCanvas(QGraphicsView):
             self._draft_item = None
             self._drawing = False
             if rect.width() >= 3 and rect.height() >= 3:
-                self.box_drawn.emit((rect.left(), rect.top(), rect.right(), rect.bottom()))
+                self.box_drawn.emit(
+                    (rect.left(), rect.top(), rect.right(), rect.bottom())
+                )
             event.accept()
             return
 
@@ -579,7 +612,9 @@ class ImageCanvas(QGraphicsView):
         item.setFlag(QGraphicsItem.ItemIsSelectable, False)
         item.setCacheMode(QGraphicsItem.NoCache)
 
-    def _apply_segmentation_style(self, annotation, mask_item, polygon_item, selected=False):
+    def _apply_segmentation_style(
+        self, annotation, mask_item, polygon_item, selected=False
+    ):
         class_color = BOX_COLORS[annotation.class_id % len(BOX_COLORS)]
         fill = QColor(class_color)
         fill.setAlpha(110 if selected else 82)
@@ -594,7 +629,9 @@ class ImageCanvas(QGraphicsView):
 
     def _refresh_segmentation_styles(self, selected_id=None):
         self._prune_item_registries()
-        annotations_by_id = {annotation.id: annotation for annotation in self._annotations}
+        annotations_by_id = {
+            annotation.id: annotation for annotation in self._annotations
+        }
         for annotation_id, polygon_item in list(self._polygon_items_by_id.items()):
             annotation = annotations_by_id.get(annotation_id)
             mask_item = self._mask_items_by_id.get(annotation_id)

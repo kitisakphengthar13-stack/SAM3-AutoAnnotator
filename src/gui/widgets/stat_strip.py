@@ -1,36 +1,42 @@
-from __future__ import annotations
-
-from PySide6.QtWidgets import QGridLayout, QLabel, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget
 
 
 class StatStrip(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("statStrip")
-        layout = QGridLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setHorizontalSpacing(8)
-        layout.setVerticalSpacing(4)
-        layout.setColumnStretch(0, 1)
-        layout.setColumnStretch(1, 1)
-
-        self.total = self._label("0 images")
-        self.reviewed = self._label("0 reviewed")
-        self.edited = self._label("0 edited")
-        self.pending = self._label("0 pending")
-        layout.addWidget(self.total, 0, 0)
-        layout.addWidget(self.reviewed, 0, 1)
-        layout.addWidget(self.edited, 1, 0)
-        layout.addWidget(self.pending, 1, 1)
-
-    @staticmethod
-    def _label(text):
-        label = QLabel(text)
-        label.setObjectName("statLabel")
-        return label
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 2, 0, 4)
+        layout.setSpacing(8)
+        top = QHBoxLayout()
+        self.total = QLabel("0 images")
+        self.reviewed = QLabel("0 reviewed")
+        self.reviewed.setObjectName("mutedLabel")
+        top.addWidget(self.total)
+        top.addStretch()
+        top.addWidget(self.reviewed)
+        layout.addLayout(top)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 1)
+        self.progress.setValue(0)
+        self.progress.setTextVisible(False)
+        self.progress.setAccessibleName("Dataset review completion")
+        layout.addWidget(self.progress)
+        row = QHBoxLayout()
+        self.edited = QLabel("0 edited")
+        self.edited.setObjectName("mutedLabel")
+        self.pending = QLabel("0 pending")
+        self.pending.setObjectName("mutedLabel")
+        row.addWidget(self.edited)
+        row.addStretch()
+        row.addWidget(self.pending)
+        layout.addLayout(row)
 
     def update_counts(self, total, reviewed, edited, pending):
         self.total.setText(f"{total} images")
         self.reviewed.setText(f"{reviewed} reviewed")
         self.edited.setText(f"{edited} edited")
         self.pending.setText(f"{pending} pending")
+        self.progress.setRange(0, max(total, 1))
+        self.progress.setValue(reviewed)
+        self.progress.setToolTip(f"{reviewed} of {total} images reviewed")

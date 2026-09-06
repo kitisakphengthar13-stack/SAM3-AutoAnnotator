@@ -2,10 +2,8 @@ import os
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
 from PySide6.QtCore import QCoreApplication, Qt
-from PySide6.QtWidgets import QApplication
-
+from PySide6.QtWidgets import QApplication, QToolButton
 from gui.main_window import MainWindow
 
 
@@ -26,26 +24,32 @@ class CommandBarTests(unittest.TestCase):
         self.window.deleteLater()
         QCoreApplication.processEvents()
 
-    def test_dense_navigation_and_history_actions_are_icon_only(self):
+    def test_project_commands_remain_visible_at_minimum_size(self):
         bar = self.window.command_bar
-        for action in (
-            self.window.actions.previous_image,
-            self.window.actions.next_image,
-            self.window.actions.undo,
-            self.window.actions.redo,
+        buttons = [bar.open_button, bar.run_button, *bar._buttons.values()]
+        for button in buttons:
+            with self.subTest(button=button.text()):
+                self.assertTrue(button.isVisible())
+                self.assertTrue(bar.rect().contains(button.geometry()))
+        extension = bar.findChild(QToolButton, "qt_toolbar_ext_button")
+        self.assertFalse(extension and extension.isVisible())
+
+    def test_navigation_and_history_are_next_to_canvas(self):
+        area = self.window.canvas_area
+        for button in (
+            area.previous_button,
+            area.next_button,
+            area.tool_buttons[self.window.actions.undo],
+            area.tool_buttons[self.window.actions.redo],
         ):
-            with self.subTest(action=action.text()):
-                self.assertEqual(
-                    bar.tool_button(action).toolButtonStyle(),
-                    Qt.ToolButtonIconOnly,
-                )
+            self.assertEqual(button.toolButtonStyle(), Qt.ToolButtonIconOnly)
+            self.assertTrue(button.isVisible())
 
-    def test_secondary_open_folder_action_is_not_forced_into_global_toolbar(self):
-        self.assertIsNone(
-            self.window.command_bar.tool_button(self.window.actions.open_folder)
-        )
-        self.assertLessEqual(self.window.command_bar.project_label.maximumWidth(), 160)
-
-
-if __name__ == "__main__":
-    unittest.main()
+    def test_open_and_assist_offer_explicit_whole_button_menus(self):
+        bar = self.window.command_bar
+        self.assertEqual(bar.open_button.popupMode(), QToolButton.InstantPopup)
+        self.assertEqual(bar.run_button.popupMode(), QToolButton.InstantPopup)
+        self.assertIn(self.window.actions.open_folder, bar.open_menu.actions())
+        self.assertIn(self.window.actions.open_state, bar.open_menu.actions())
+        self.assertIn(self.window.actions.run_remaining, bar.run_menu.actions())
+        self.assertIn(self.window.actions.import_yolo, bar.run_menu.actions())

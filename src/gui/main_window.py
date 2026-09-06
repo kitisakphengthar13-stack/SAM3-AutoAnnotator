@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import Qt, QUrl, QEvent
+from PySide6.QtGui import QAction, QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
+    QLabel,
+    QPushButton,
     QDockWidget,
     QFileDialog,
     QMainWindow,
@@ -20,7 +22,7 @@ from gui.coordinators import (
     ExportDialogCoordinator,
     SetupDialogCoordinator,
 )
-from gui.theme import APP_STYLESHEET
+from gui.theme import APP_STYLESHEET, apply_palette
 from gui.views.annotation_panel import AnnotationPanel
 from gui.views.dataset_panel import DatasetPanel
 from gui.views.main_toolbar import CommandBar, build_menus
@@ -28,7 +30,7 @@ from gui.views.results_panel import ResultsPanel
 from gui.views.setup_panel import SetupPanel
 from gui.views.workspace import CanvasWorkspace
 from gui.widgets.elided_label import ElidedLabel
-
+from gui.widgets.dock_title import DockTitle
 
 IMAGE_FILTER = "Images (*.jpg *.jpeg *.png *.bmp *.tif *.tiff *.webp)"
 
@@ -43,6 +45,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(960, 620)
         self.resize(1360, 840)
 
+        apply_palette(self)
         self.controller = None
         self.ui_settings = None
         self.diagnostic_log_path = None
@@ -66,8 +69,13 @@ class MainWindow(QMainWindow):
         self.annotation_dock = self._dock(
             "Objects", "objectsDock", self.annotation, Qt.RightDockWidgetArea
         )
-        self.annotation.setMinimumWidth(280)
-        self.canvas_area.active_class_combo.setModel(self.annotation.class_combo.model())
+        self.annotation.setMinimumWidth(260)
+        self.resizeDocks(
+            [self.dataset_dock, self.annotation_dock], [238, 286], Qt.Horizontal
+        )
+        self.canvas_area.active_class_combo.setModel(
+            self.annotation.class_combo.model()
+        )
 
         self.view_menu.addSeparator()
         dataset_toggle = self.dataset_dock.toggleViewAction()
@@ -78,12 +86,22 @@ class MainWindow(QMainWindow):
         self.view_menu.addAction(objects_toggle)
 
         self.setup = SetupPanel(self.actions)
-        self.setup_dialog = self._dialog("Project Setup", self.setup, 430, 650)
+        self.setup_dialog = self._dialog("Project Setup", self.setup, 720, 590)
         self.setup_dialog.setWindowModality(Qt.WindowModal)
 
         self.results = ResultsPanel(self.actions)
-        self.results_dialog = self._dialog("Export", self.results, 500, 680)
+        self.results_dialog = self._dialog("Export", self.results, 640, 610)
         self.results_dialog.setWindowModality(Qt.WindowModal)
+        self.results.close_requested.connect(self.results_dialog.accept)
+
+        self.reset_layout_action = QAction("Reset Workspace Layout", self)
+        self.reset_layout_action.triggered.connect(self.reset_workspace_layout)
+        self.view_menu.addSeparator()
+        self.view_menu.addAction(self.reset_layout_action)
+        self.help_action = QAction("Keyboard Shortcuts", self)
+        self.help_action.setShortcut("F1")
+        self.help_action.triggered.connect(self.show_shortcuts)
+        self.menuBar().addMenu("&Help").addAction(self.help_action)
 
         self.history = AnnotationHistoryCoordinator(self)
         self.undo_stack = self.history.stack
@@ -120,6 +138,7 @@ class MainWindow(QMainWindow):
             | features.DockWidgetFloatable
         )
         dock.setWidget(widget)
+        dock.setTitleBarWidget(DockTitle(dock))
         self.addDockWidget(area, dock)
         return dock
 
@@ -148,8 +167,54 @@ class MainWindow(QMainWindow):
         self.setup_flow.show()
 
     def show_review(self):
-        self.annotation_dock.show()
-        self.annotation_dock.raise_()
+        # Selection must not reopen a dock the user deliberately hid or floated.
+        if self.annotation_dock.isVisible():
+            self.annotation_dock.update()
+
+    def reset_workspace_layout(self):
+        self.actions.focus_workspace.setChecked(False)
+        for dock, area in (
+            (self.dataset_dock, Qt.LeftDockWidgetArea),
+            (self.annotation_dock, Qt.RightDockWidgetArea),
+        ):
+            dock.setFloating(False)
+            self.addDockWidget(area, dock)
+            dock.show()
+        self.resizeDocks(
+            [self.dataset_dock, self.annotation_dock], [238, 286], Qt.Horizontal
+        )
+
+    def show_shortcuts(self):
+        if not hasattr(self, "shortcuts_dialog"):
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Keyboard Shortcuts")
+            dialog.setWindowModality(Qt.WindowModal)
+            layout = QVBoxLayout(dialog)
+            layout.setContentsMargins(24, 24, 24, 24)
+            label = QLabel("Move through your work")
+            label.setObjectName("dialogTitle")
+            layout.addWidget(label)
+            help_text = QLabel(
+                "Select: Esc    •    Pan: P    •    Draw box: B\n"
+                "Temporary pan: hold Space\n\n"
+                "Review & next: R    •    Previous / next: Alt + ← / →\n"
+                "Undo: Ctrl+Z    •    Redo: Ctrl+Shift+Z or Ctrl+Y (platform)\n"
+                "Delete selected object: Delete\n\n"
+                "Fit image: F    •    Actual size: Ctrl+0\n"
+                "Zoom: mouse wheel or Ctrl + / −\n"
+                "Focus workspace: Ctrl+Shift+F    •    Fullscreen: F11\n\n"
+                "Run current: F5    •    Run pending: Shift+F5\n"
+                "Re-segment selected: Ctrl+R\n"
+                "Save: Ctrl+S    •    Export: Ctrl+E    •    Setup: Ctrl+,"
+            )
+            help_text.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            layout.addWidget(help_text)
+            close = QPushButton("Done")
+            close.clicked.connect(dialog.accept)
+            layout.addWidget(close)
+            self.shortcuts_dialog = dialog
+        self.shortcuts_dialog.show()
+        self.shortcuts_dialog.raise_()
 
     def show_export_preflight(self):
         self.export_flow.show_preflight()
@@ -179,6 +244,14 @@ class MainWindow(QMainWindow):
             self.showMaximized()
         else:
             self.showNormal()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.WindowStateChange and hasattr(self, "actions"):
+            action = self.actions.fullscreen
+            action.blockSignals(True)
+            action.setChecked(self.isFullScreen())
+            action.blockSignals(False)
 
     def _set_canvas_navigation_enabled(self, enabled):
         for action in (
@@ -281,9 +354,7 @@ class MainWindow(QMainWindow):
     def open_local_path(self, path):
         if path is None:
             return False
-        return QDesktopServices.openUrl(
-            QUrl.fromLocalFile(str(Path(path).resolve()))
-        )
+        return QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(path).resolve())))
 
     def closeEvent(self, event):
         if self.controller is None:

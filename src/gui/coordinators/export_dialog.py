@@ -17,9 +17,11 @@ class ExportDialogCoordinator:
 
         readiness = evaluate_export_readiness(project)
         self.window.results.set_status(
-            "Review export warnings before writing files."
-            if readiness.has_warnings
-            else "Project is ready to export.",
+            (
+                "Review export warnings before writing files."
+                if readiness.has_warnings
+                else "Project is ready to export."
+            ),
             "\n".join(
                 (
                     f"Reviewed images: {readiness.reviewed_images}/{readiness.total_images}",
@@ -28,6 +30,9 @@ class ExportDialogCoordinator:
                     f"Stale / missing segmentation: {readiness.stale_segmentations}",
                 )
             ),
+        )
+        self.window.results.set_preflight(
+            readiness, self.window.setup.output_dir_edit.text().strip()
         )
         self.window.actions.export.setText(
             "Export Anyway" if readiness.has_warnings else "Export Now"

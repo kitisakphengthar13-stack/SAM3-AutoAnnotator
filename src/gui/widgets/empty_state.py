@@ -22,20 +22,22 @@ class EmptyStateWidget(QWidget):
         self.setAttribute(Qt.WA_StyledBackground, True)
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignCenter)
-        layout.setSpacing(10)
+        layout.setSpacing(12)
+        layout.setContentsMargins(28, 20, 28, 20)
 
         glyph = QLabel()
-        glyph.setPixmap(icon(ICONS["image"], "#93c5fd").pixmap(32, 32))
+        glyph.setPixmap(icon(ICONS["app"]).pixmap(52, 52))
         glyph.setAlignment(Qt.AlignCenter)
         layout.addWidget(glyph)
 
-        title = QLabel("Start an annotation project")
+        title = QLabel("Ready to annotate.")
         title.setObjectName("emptyTitle")
         title.setAlignment(Qt.AlignCenter)
+        title.setWordWrap(True)
         layout.addWidget(title)
 
         subtitle = QLabel(
-            "Open a folder for a review workflow, or open one image for a quick annotation."
+            "Create precise training data with SAM3 assistance.\nOpen images, correct objects, and export reviewed labels."
         )
         subtitle.setObjectName("emptySubtitle")
         subtitle.setAlignment(Qt.AlignCenter)
@@ -48,7 +50,7 @@ class EmptyStateWidget(QWidget):
         buttons.setSpacing(8)
         open_folder = QPushButton("Open Folder")
         open_folder.setObjectName("emptyPrimary")
-        open_folder.setIcon(icon(ICONS["folder"], "#dbeafe", scale_factor=0.8))
+        open_folder.setIcon(icon(ICONS["folder"], "#09251e"))
         open_folder.clicked.connect(self.open_folder_requested)
         open_image = QPushButton("Open Image")
         open_image.setObjectName("emptySecondary")
@@ -57,3 +59,10 @@ class EmptyStateWidget(QWidget):
         buttons.addWidget(open_folder)
         buttons.addWidget(open_image)
         layout.addLayout(buttons)
+        hint = QLabel(
+            "Resume saved work from Open → Open Project\nKeyboard shortcuts: F1"
+        )
+        hint.setObjectName("mutedLabel")
+        hint.setAlignment(Qt.AlignCenter)
+        hint.setWordWrap(True)
+        layout.addWidget(hint)

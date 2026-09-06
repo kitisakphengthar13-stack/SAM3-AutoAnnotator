@@ -12,7 +12,6 @@ from services.project_service import (
     remaining_prediction_targets,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -164,8 +163,7 @@ class PresentationController:
         class_changed = bool(
             annotation is not None
             and (
-                host.view.annotation.class_combo.currentIndex()
-                != annotation.class_id
+                host.view.annotation.class_combo.currentIndex() != annotation.class_id
                 or host.view.annotation.class_combo.currentText().strip()
                 != annotation.class_name
             )
@@ -188,31 +186,43 @@ class PresentationController:
         actions.save.setEnabled(
             ready
             and settings_valid
-            and (
-                host.dirty
-                or host.current_state_path is None
-                or destination_changed
-            )
+            and (host.dirty or host.current_state_path is None or destination_changed)
         )
         actions.export.setEnabled(ready and settings_valid)
+        actions.run_current.setToolTip(
+            "Run SAM3 on the selected image. (F5)"
+            if model_ok and prompts
+            else (
+                "Add classes in Setup before running SAM3."
+                if not prompts
+                else "Select a local SAM3 model in Setup. Manual box editing is available."
+            )
+        )
         actions.run_current.setEnabled(
             image_ready and settings_valid and bool(prompts) and model_ok
         )
         actions.run_remaining.setEnabled(
-            ready
-            and settings_valid
-            and bool(prompts)
-            and model_ok
-            and bool(targets)
+            ready and settings_valid and bool(prompts) and model_ok and bool(targets)
         )
-        actions.draw_box.setEnabled(
-            image_ready and settings_valid and bool(prompts)
+        actions.draw_box.setEnabled(image_ready and settings_valid and bool(prompts))
+        for action in (
+            actions.select_tool,
+            actions.pan_tool,
+            actions.fit,
+            actions.zoom_in,
+            actions.zoom_out,
+            actions.actual_size,
+        ):
+            action.setEnabled(image_ready)
+        actions.project_settings.setEnabled(idle)
+        host.view.command_bar.open_button.setEnabled(idle)
+        host.view.command_bar.run_button.setEnabled(ready)
+        host.view.canvas_area.active_class_combo.setEnabled(
+            image_ready and bool(prompts)
         )
-        actions.fit.setEnabled(image_ready)
+        host.view.canvas_area.overlay_button.setEnabled(image_ready)
         actions.previous_image.setEnabled(ready and visible_row > 0)
-        actions.next_image.setEnabled(
-            ready and 0 <= visible_row < visible_count - 1
-        )
+        actions.next_image.setEnabled(ready and 0 <= visible_row < visible_count - 1)
         actions.apply_class.setEnabled(
             image_ready
             and settings_valid
@@ -293,10 +303,15 @@ class PresentationController:
             )
             image_text = f"{image.image_name} ({size})"
             count = len(image.active_annotations)
-        state = "unsaved" if host.dirty else "saved"
-        host.view.set_status_context(
-            f"{image_text} | {count} annotations | {state}"
+        count_visible = host.view.dataset.filter_model.rowCount()
+        row_visible = host.view.dataset.selected_visible_row()
+        host.view.canvas_area.position_label.setText(
+            f"{row_visible + 1} / {count_visible}"
+            if row_visible >= 0
+            else "No match" if count_visible == 0 and image is not None else "No image"
         )
+        state = "unsaved" if host.dirty else "saved"
+        host.view.set_status_context(f"{image_text} | {count} annotations | {state}")
 
     def report_error(self, title, message, next_action, exc):
         host = self.host

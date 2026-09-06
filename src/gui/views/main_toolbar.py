@@ -1,51 +1,72 @@
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import QSizePolicy, QToolBar
+from PySide6.QtWidgets import QLabel, QMenu, QSizePolicy, QToolBar, QWidget
 
+from gui.widgets.action_button import action_button, menu_button
 from gui.widgets.elided_label import ElidedLabel
 
 
 class CommandBar(QToolBar):
-    """Compact global workflow bar; dense tool controls belong beside the canvas."""
+    """Project commands only. Editing and review live with their work surface."""
 
     def __init__(self, actions, parent=None):
-        super().__init__("Main Commands", parent)
+        super().__init__("Project commands", parent)
         self.setObjectName("commandBar")
         self.setMovable(False)
         self.setFloatable(False)
         self.setIconSize(QSize(18, 18))
-        self.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-
-        self.project_label = ElidedLabel("No project loaded")
+        self._buttons = {}
+        brand = QLabel("SAM3")
+        brand.setObjectName("brand")
+        self.addWidget(brand)
+        self.addSeparator()
+        self.project_label = ElidedLabel("AutoAnnotator")
         self.project_label.setObjectName("projectSubtitle")
-        self.project_label.setMinimumWidth(100)
-        self.project_label.setMaximumWidth(160)
-        self.project_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.project_label.setMinimumWidth(140)
+        self.project_label.setMaximumWidth(240)
         self.addWidget(self.project_label)
-        self.addSeparator()
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.addWidget(spacer)
 
-        self.addAction(actions.open_image)
-        self.addAction(actions.save)
+        self.open_menu = QMenu(self)
+        for action in (actions.open_folder, actions.open_image, actions.open_state):
+            self.open_menu.addAction(action)
+        self.open_button = menu_button("Open", "folder", self.open_menu)
+        self.open_button.setToolTip("Open images, a folder, or a saved project")
+        self.addWidget(self.open_button)
+        self.add_command(actions.save, icon_only=True)
         self.addSeparator()
-        self._add_compact(actions.previous_image)
-        self._add_compact(actions.next_image)
-        self.addAction(actions.mark_reviewed)
-        self.addSeparator()
-        self._add_compact(actions.undo)
-        self._add_compact(actions.redo)
-        self.addSeparator()
-        self.addAction(actions.run_current)
-        self.addAction(actions.project_settings)
-        self.addAction(actions.export_dialog)
+        self.run_current_button = self.add_command(actions.run_current)
+        self.run_menu = QMenu(self)
+        for action in (actions.run_current, actions.run_remaining):
+            self.run_menu.addAction(action)
+        self.run_menu.addSeparator()
+        self.run_menu.addAction(actions.import_yolo)
+        self.run_menu.addSeparator()
+        self.run_menu.addAction(actions.project_settings)
+        self.run_menu.setToolTipsVisible(True)
+        self.run_button = menu_button("", "more", self.run_menu)
+        self.run_button.setObjectName("assistMenu")
+        self.run_button.setProperty("popup", False)
+        self.run_button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.run_button.setFixedSize(36, 36)
+        self.run_button.setAccessibleName("More assistance commands")
+        self.run_button.setToolTip(
+            "Run SAM3 on this image or pending images, or import YOLO labels"
+        )
+        self.addWidget(self.run_button)
+        self.add_command(actions.project_settings)
+        self.add_command(actions.export_dialog)
 
-    def _add_compact(self, action):
-        self.addAction(action)
-        button = self.widgetForAction(action)
-        if button is not None:
-            button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+    def add_command(self, action, icon_only=False):
+        button = action_button(action, icon_only=icon_only)
+        self._buttons[action] = button
+        self.addWidget(button)
+        return button
 
     def tool_button(self, action):
-        return self.widgetForAction(action)
+        return self._buttons.get(action)
 
 
 def build_menus(window, actions):

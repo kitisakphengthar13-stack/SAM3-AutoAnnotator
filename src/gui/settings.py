@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QSettings
 
-
-SETTINGS_VERSION = 2
+SETTINGS_VERSION = 3
 
 
 class UiSettings:
@@ -23,12 +22,17 @@ class UiSettings:
             window.restoreState(window_state, SETTINGS_VERSION)
 
     def save_window(self, window):
+        focused = window.actions.focus_workspace.isChecked()
+        if focused:
+            window.actions.focus_workspace.setChecked(False)
         self._settings.setValue("ui/version", SETTINGS_VERSION)
         self._settings.setValue("ui/main_window_geometry", window.saveGeometry())
         self._settings.setValue(
             "ui/main_window_state", window.saveState(SETTINGS_VERSION)
         )
         self._settings.sync()
+        if focused:
+            window.actions.focus_workspace.setChecked(True)
 
     def last_directory(self):
         return str(self._settings.value("files/last_directory", ""))
