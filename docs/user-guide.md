@@ -38,7 +38,15 @@ The application is canvas-first:
 - **Setup**: transient configuration dialog.
 - **Export**: transient preflight/result dialog.
 
-Dataset and Objects can be closed, moved, floated, and restored from **View**.
+At narrow window widths the Dataset dock auto-collapses to preserve annotation
+space while the Objects dock remains available. You can reopen Dataset from
+**View**; a panel you deliberately reopen is not immediately hidden again. When a
+Dataset panel was hidden only by the responsive layout, widening the window restores
+it automatically. The responsive threshold adapts to the usable desktop width on
+native displays rather than assuming that a requested window size always fits the
+physical screen.
+
+Dataset and Objects can also be closed, moved, floated, and restored from **View**.
 **Focus Workspace** hides them temporarily. **F11** is actual window fullscreen;
 **Fit** only changes image framing. **View → Reset Workspace Layout** restores the
 default dock arrangement; **F1** opens the shortcut reference.
@@ -49,7 +57,8 @@ Open **Setup**. The **Annotation** tab contains the model, classes, confidence,
 and precision. **Files and output** contains the destination. Fields are staged drafts:
 
 - **Output**: project/export destination.
-- **Model**: local SAM3 `.pt` checkpoint.
+- **Model**: local SAM3 `.pt` checkpoint. Only load checkpoint files from sources
+  you trust.
 - **Classes**: text prompts, one per line or comma-separated.
 - **Confidence**: `0.01` through `1.00`.
 - **fp16**: request 16-bit inference when supported.
@@ -177,6 +186,11 @@ Generated artifacts include:
 - `yolo_labels/segmentation/*.txt` for currently valid polygons only;
 - `segmentation_skipped_report.json` when segmentation is omitted;
 - `run_summary.json`.
+
+CSV text fields that begin with spreadsheet formula markers such as `=`, `+`, `-`,
+or `@` are prefixed with an apostrophe in the CSV output so opening exported data in
+a spreadsheet does not interpret those cells as formulas. This export hardening does
+not modify the annotation state or YOLO labels.
 
 After export, the same dialog shows the completion summary and **Open Output
 Folder**. **Files and preview** shows the generated paths and an inspection image.
