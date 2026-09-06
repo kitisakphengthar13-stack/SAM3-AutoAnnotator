@@ -20,9 +20,13 @@ annotation workflow.
   annotation edits.
 - Tracks image state: not predicted, predicted, edited, reviewed, no detection, or
   error.
-- Saves atomic resumable `annotation_state.json` project state.
+- Saves atomic resumable `annotation_state.json` project state and keeps a separate
+  debounced crash-recovery snapshot while there are unsaved changes.
+- Fingerprints source images with SHA-256 so a same-size replacement is not silently
+  annotated or exported as the original source.
 - Exports bounding-box CSV plus YOLO detection and valid YOLO segmentation labels.
-- Reports stale/missing/invalid segmentation instead of silently exporting it.
+- Reports stale/missing/invalid segmentation instead of silently exporting it;
+  degenerate zero-area and self-intersecting polygons are rejected.
 
 ## Requirements
 
@@ -39,16 +43,29 @@ On Windows the default application home is
 
 ## Install and launch
 
-From the repository root in PowerShell:
+For a reproducible installation matching the versions exercised by CI, install the
+normal requirements together with `constraints-tested.txt`:
 
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt -c constraints-tested.txt
 .\.venv\Scripts\python.exe src/main.py
 ```
 
-If `.venv` is already prepared, only the final command is needed.
+`requirements.txt` contains the supported version ranges; `constraints-tested.txt`
+records a known-tested Python 3.12 resolution. If `.venv` is already prepared, only
+the final command is needed.
+
+Before using a production workstation, the installed runtime can be checked directly:
+
+```powershell
+.\.venv\Scripts\python.exe tools/verify_runtime.py --require-cuda
+.\.venv\Scripts\python.exe tools/verify_runtime.py --require-cuda --checkpoint D:\path\to\trusted\sam3.pt
+```
+
+The second command exercises Ultralytics' real checkpoint-loading path. Supplying a
+checkpoint is optional and should only be done for a checkpoint you trust.
 
 ## Recommended workflow
 
@@ -67,13 +84,20 @@ Open -> Configure -> Predict/Import -> Inspect/Edit -> Review & Next -> Save -> 
 5. Correct boxes/classes. Use **Re-segment** when changed geometry needs a fresh
    SAM3 polygon. Undo/Redo is available for completed object edits.
 6. Use **Review & Next** to mark the current image reviewed and advance.
-7. Use **Save Project** to persist the editable source of truth.
+7. Use **Save Project** to persist the editable source of truth. While the project is
+   dirty, a separate recovery snapshot is written after edits settle; manual Save
+   remains the authoritative project state.
 8. Press **Ctrl+E / Export** to open preflight. Opening preflight writes nothing;
    explicitly choose **Export Now** or **Export Anyway** to write final files.
 
 Pending batch prediction skips predicted, edited, reviewed, and no-detection images.
 Cancellation stops after the image currently processing; completed results remain
 available to save.
+
+When opening a saved project, if a newer recovery snapshot exists beside
+`annotation_state.json`, the app offers to restore it. A restored snapshot stays
+marked unsaved until **Save Project** is explicitly used; a successful manual Save
+removes the recovery snapshot.
 
 ## Interface at a glance
 
@@ -117,7 +141,7 @@ For detailed controls, shortcuts, recovery behavior, and import rules, see
 ## Application data and output
 
 The repository is source code only. Runtime assets and generated projects are not
-created under the repository root.
+created under the repository root by default.
 
 Default application home:
 
@@ -143,6 +167,7 @@ A project output contains:
 ```text
 <project_name>/
 |-- annotation_state.json
+|-- annotation_state.recovery.json     # only while newer unsaved recovery exists
 |-- sam3_auto_annotation_box_outputs.csv
 |-- yolo_labels/
 |   |-- detection/
@@ -155,15 +180,20 @@ A project output contains:
 `-- run_summary.json
 ```
 
-`annotation_state.json` is the resumable editable project; CSV/YOLO exports are
-derived artifacts. Detection labels use current boxes. Segmentation labels contain
-only annotations whose normalized `polygon_xyn` is currently valid. Empty images
-receive an empty YOLO detection label file. CSV text fields that begin with common
-spreadsheet formula markers are prefixed with an apostrophe in the CSV artifact;
-this does not modify project state or YOLO labels.
+`annotation_state.json` is the manually saved resumable source of truth;
+`annotation_state.recovery.json` is a temporary crash-recovery snapshot. CSV/YOLO
+exports are derived artifacts. Detection labels use current boxes. Segmentation
+labels contain only annotations whose normalized polygon is finite, in range,
+non-degenerate, non-self-intersecting, and currently valid. Empty images receive an
+empty YOLO detection label file. CSV text fields that begin with common spreadsheet
+formula markers are prefixed with an apostrophe in the CSV artifact; this does not
+modify project state or YOLO labels.
 
-Source images are not copied. Export does not create `data.yaml` or dataset
-train/validation/test splits.
+Source images are not copied. Their dimensions and SHA-256 fingerprints are stored
+in project state and verified during load, Save Project, and export. A changed
+source must be restored or opened as a new project rather than silently reusing old
+annotations. Export does not create `data.yaml` or dataset train/validation/test
+splits.
 
 ## Project structure
 
@@ -181,13 +211,15 @@ SAM3-AutoAnnotator/
 |   `-- gui/                        # PySide6 workstation
 |-- tests/
 |   `-- fixtures/images/            # small integration fixtures
+|-- tools/
 |-- docs/
 |-- requirements.txt
+|-- constraints-tested.txt
 `-- .gitignore
 ```
 
-`src/main.py` is the only executable entrypoint. There is no project-name wrapper
-package and no root forwarding script.
+`src/main.py` is the only application entrypoint. `tools/verify_runtime.py` is a
+verification utility, not an annotation CLI.
 
 ## Known limitation
 
@@ -197,12 +229,16 @@ until re-segmented.
 
 ## Verification scope
 
-GitHub Actions resolves production dependencies and runs the full GUI/domain suite
-on Linux and Windows. A second Windows pass uses the native Qt platform for pointer
-and keyboard interactions. Both runners render the actual app at 100% and 150%
-Qt scaling and upload the captures. See [verification](docs/verification.md).
-Real SAM3/CUDA inference and the user's physical monitor/GPU remain outside these
-checks; the screenshots use a manually drawn annotation on a repository fixture.
+GitHub Actions resolves the tested production dependency set and runs the full
+GUI/domain suite on Linux and Windows. A second Windows pass uses the native Qt
+platform for pointer and keyboard interactions. Both runners render the actual app
+at 100% and 150% Qt scaling and upload the captures. See
+[verification](docs/verification.md).
+
+CI verifies dependency resolution and the Ultralytics SAM import contract, but does
+not claim a real SAM3/CUDA prediction because hosted runners have no trusted
+production checkpoint/GPU. Use `tools/verify_runtime.py` and a real workstation
+acceptance run before claiming GPU deployment verification.
 
 ## Design references
 
