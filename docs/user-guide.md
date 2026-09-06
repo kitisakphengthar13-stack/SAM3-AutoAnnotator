@@ -8,6 +8,12 @@ Launch from the repository root:
 .\.venv\Scripts\python.exe src/main.py
 ```
 
+For a reproducible environment matching CI's tested resolution, install with:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt -c constraints-tested.txt
+```
+
 The window restores Qt geometry/dock state. Project data is separate and returns
 only when you open a saved `annotation_state.json`.
 
@@ -20,11 +26,22 @@ Use the top **Open** menu or the File menu:
   non-recursive.
 - **Open Project** resumes `annotation_state.json`.
 
+If a saved project has a newer `annotation_state.recovery.json` beside its manual
+state, Open Project offers to restore the recovery snapshot. Restored changes remain
+marked unsaved until **Save Project** is explicitly used. Declining recovery removes
+the stale recovery file and opens the last manual state.
+
 Supported image suffixes: `.jpg`, `.jpeg`, `.png`, `.bmp`, `.tif`, `.tiff`,
 `.webp`.
 
 Images in one folder need unique filename stems because YOLO files are generated
 from those stems.
+
+When a project is created, the app stores source dimensions and a SHA-256
+fingerprint for each source image. Loading an existing fingerprinted project rejects
+a changed source even when the replacement has the same dimensions. Legacy project
+states without fingerprints are upgraded in memory after their current source files
+pass dimension validation.
 
 ## 3. Understand the workstation
 
@@ -96,7 +113,9 @@ Coordinates are normalized. Files match images by stem. Missing files leave imag
 untouched; empty files mark no detection; malformed rows are skipped. Unknown class
 IDs receive generated names such as `class_4`.
 
-Import is a project operation, not a Setup control.
+Import is transactional across the project: a later file-level failure does not
+leave earlier images partially imported. Import is a project operation, not a Setup
+control.
 
 ## 6. Navigate and edit the canvas
 
@@ -140,15 +159,18 @@ starts; a validation/start failure does not discard valid Undo history.
 The saved-state marker uses the undo stack clean index. If you save, make only
 undoable object edits, and Undo exactly back to the saved point, the project returns
 to clean state. Once a non-undoable mutation occurs, the project remains dirty until
-Save/Export establishes a new clean state.
+Save Project establishes a new clean state.
 
 ### Re-segment and reset
 
-- **Re-segment** asks SAM3 for a new polygon from the current selected box.
+- **Re-segment** asks SAM3 for a new polygon from the current selected box using the
+  visual box-prompt path and spatial result matching.
 - **Reset to SAM3** restores the original SAM3 geometry/class snapshot when one
   exists.
 
-Direct point-by-point polygon editing is not implemented.
+Direct point-by-point polygon editing is not implemented. Exportable polygons must
+be finite and normalized, contain at least three distinct points, have non-zero
+area, contain no zero-length edge, and not self-intersect.
 
 ## 7. Review and move forward
 
@@ -156,25 +178,43 @@ Use **Review & Next (`R`)** to mark the current image reviewed and advance to th
 next visible image when one exists. Previous/Next remain independent navigation
 commands. Dataset filtering changes which images are considered visible.
 
-## 8. Save
+## 8. Save and crash recovery
 
-**Save Project** writes `annotation_state.json` containing prompts, settings,
-statuses, image records, and editable annotations. The save uses temporary-file
-replacement to protect the previous state from interrupted writes.
+**Save Project** writes the authoritative `annotation_state.json` containing prompts,
+settings, statuses, source fingerprints, image records, and editable annotations.
+The save uses temporary-file replacement to protect the previous state from
+interrupted writes.
 
-Save after meaningful review work and after partial/completed batch inference.
+While the project has unsaved mutations, the app schedules a separate atomic
+`annotation_state.recovery.json` snapshot after edits settle for five seconds.
+Further edits restart the debounce interval, avoiding repeated full-state writes
+while the user is actively editing. Undo/Redo, project mutations, and completed
+inference/batch changes participate in the same recovery schedule.
+
+A recovery snapshot never replaces the manual state. Successful Save Project clears
+the recovery snapshot. Recovery write failures are logged and do not replace or
+corrupt the manually saved state.
+
+Save after meaningful review work and after partial/completed batch inference even
+though crash recovery exists; recovery is a safety net, not a substitute for an
+explicit save checkpoint.
 
 ## 9. Export
 
 Press **Ctrl+E** or choose **Export**. This opens preflight; it does **not** write
 files merely by opening.
 
+Before Save/export the app verifies every source image against the stored dimensions
+and SHA-256 fingerprint. If image contents changed, restore the original source or
+open the changed images as a new project; old annotations are not silently exported
+against replacement pixels.
+
 Preflight summarizes:
 
 - reviewed images;
 - images still needing review;
 - unpredicted/failed images;
-- stale or missing segmentation.
+- stale, missing, or invalid segmentation.
 
 Use **Export Now** when ready. When warnings remain the explicit action becomes
 **Export Anyway**.
@@ -191,6 +231,10 @@ CSV text fields that begin with spreadsheet formula markers such as `=`, `+`, `-
 or `@` are prefixed with an apostrophe in the CSV output so opening exported data in
 a spreadsheet does not interpret those cells as formulas. This export hardening does
 not modify the annotation state or YOLO labels.
+
+Managed export artifacts are staged before publication. If publication raises an
+exception, the exporter restores the previous managed output instead of knowingly
+leaving a mixed old/new label set.
 
 After export, the same dialog shows the completion summary and **Open Output
 Folder**. **Files and preview** shows the generated paths and an inspection image.
@@ -243,9 +287,11 @@ to one command definition.
 
 ## Recovery and diagnostics
 
-- Image decode failure clears stale canvas graphics and shows an inline Retry state.
-- Inference failure marks the image `error`; fix the model/prompt/runtime issue and
-  retry directly or through Run Pending.
+- Image decode/display failure is presentation-only: it clears stale canvas graphics
+  and shows Retry without demoting reviewed/edited annotation state.
+- Inference failure marks a pending/error image `error`; fix the model/prompt/runtime
+  issue and retry directly or through Run Pending. Existing reviewed/edited content
+  is not demoted solely because a later automated operation failed.
 - For skipped segmentation, inspect `segmentation_skipped_report.json`, correct the
   object, and Re-segment when appropriate.
 - Unexpected errors include the diagnostic log path in the dialog.
@@ -253,8 +299,27 @@ to one command definition.
   Qt persists the layout for the next launch. Closing while Focus Workspace is
   active does not permanently hide both panels.
 
+## Production runtime verification
+
+Hosted CI does not have the user's trusted SAM3 checkpoint or CUDA workstation. On
+the intended machine, verify the installed dependency stack and CUDA first:
+
+```powershell
+.\.venv\Scripts\python.exe tools/verify_runtime.py --require-cuda
+```
+
+Then, for a checkpoint you trust, exercise Ultralytics' real checkpoint-loading path:
+
+```powershell
+.\.venv\Scripts\python.exe tools/verify_runtime.py --require-cuda --checkpoint D:\path\to\sam3.pt
+```
+
+After that, perform an actual workstation acceptance pass: current-image prediction,
+selected-box Re-segment, pending batch/cancel, Save Project, reload, and export.
+
 ## Verification limits
 
-CI covers offscreen workflows on Linux/Windows, native Windows interaction checks,
-and rendered screens at two Qt scales. These runs do not replace testing the actual
+CI covers domain/GUI workflows on Linux/Windows, native Windows interaction checks,
+tested dependency resolution, the Ultralytics SAM import contract, and rendered
+screens at two Qt scales. These runs do not replace testing the actual
 GPU/checkpoint or the physical monitor setup. See [verification](verification.md).
