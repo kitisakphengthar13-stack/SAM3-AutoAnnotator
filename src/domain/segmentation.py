@@ -1,17 +1,39 @@
 from collections import Counter
+from math import isfinite
 
 
 def polygon_point_count(annotation):
     return len(annotation.polygon_xyn or [])
 
 
+def validate_polygon_xyn(polygon_xyn, *, require_three=True):
+    if polygon_xyn is None:
+        raise ValueError("Segmentation polygon is missing.")
+    points = []
+    for point in polygon_xyn:
+        if not isinstance(point, (list, tuple)) or len(point) != 2:
+            raise ValueError("Every segmentation point must contain x and y values.")
+        x, y = float(point[0]), float(point[1])
+        if not isfinite(x) or not isfinite(y):
+            raise ValueError("Segmentation polygon coordinates must be finite.")
+        if not 0.0 <= x <= 1.0 or not 0.0 <= y <= 1.0:
+            raise ValueError("Segmentation polygon coordinates must be normalized to [0, 1].")
+        points.append([x, y])
+    if require_three and len(points) < 3:
+        raise ValueError("Segmentation polygon requires at least three points.")
+    if require_three and len({(x, y) for x, y in points}) < 3:
+        raise ValueError("Segmentation polygon requires at least three distinct points.")
+    return points
+
+
 def has_valid_segmentation(annotation):
-    return (
-        annotation.is_active
-        and bool(annotation.segmentation_valid)
-        and bool(annotation.polygon_xyn)
-        and polygon_point_count(annotation) >= 3
-    )
+    if not annotation.is_active or not bool(annotation.segmentation_valid):
+        return False
+    try:
+        validate_polygon_xyn(annotation.polygon_xyn)
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 def segmentation_status(annotation):
@@ -21,7 +43,9 @@ def segmentation_status(annotation):
         return "valid"
     if not annotation.polygon_xyn:
         return "none"
-    if polygon_point_count(annotation) < 3:
+    try:
+        validate_polygon_xyn(annotation.polygon_xyn)
+    except (TypeError, ValueError):
         return "invalid"
     if not annotation.segmentation_valid:
         source = getattr(annotation, "source", None)
@@ -45,8 +69,10 @@ def segmentation_skip_reason(annotation):
         return None
     if not annotation.polygon_xyn:
         return "no polygon"
-    if polygon_point_count(annotation) < 3:
-        return "polygon has too few points"
+    try:
+        validate_polygon_xyn(annotation.polygon_xyn)
+    except (TypeError, ValueError) as exc:
+        return str(exc)
     if status == "stale":
         return "segmentation stale after bbox/class edit"
     if not annotation.segmentation_valid:
@@ -66,12 +92,11 @@ def polygon_xyn_to_pixels(polygon_xyn, image_width, image_height):
 
 
 def build_yolo_segmentation_line(class_id, polygon_xyn):
+    points = validate_polygon_xyn(polygon_xyn)
     values = []
-    for x_norm, y_norm in polygon_xyn or []:
-        values.append(f"{min(max(float(x_norm), 0.0), 1.0):.6f}")
-        values.append(f"{min(max(float(y_norm), 0.0), 1.0):.6f}")
-    if len(values) < 6:
-        raise ValueError("YOLO segmentation export requires at least three polygon points.")
+    for x_norm, y_norm in points:
+        values.append(f"{x_norm:.6f}")
+        values.append(f"{y_norm:.6f}")
     return f"{int(class_id)} {' '.join(values)}"
 
 

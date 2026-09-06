@@ -1,10 +1,26 @@
+from math import isfinite
+
+
+def _finite_values(values, field_name):
+    converted = [float(value) for value in values]
+    if not all(isfinite(value) for value in converted):
+        raise ValueError(f"{field_name} must contain only finite numbers.")
+    return converted
+
+
 def validate_image_size(image_width, image_height):
-    if image_width <= 0 or image_height <= 0:
+    width, height = _finite_values((image_width, image_height), "Image size")
+    if width <= 0 or height <= 0:
         raise ValueError("Image width and height must be positive.")
 
 
 def validate_xyxy(box_xyxy):
-    x1, y1, x2, y2 = [float(value) for value in box_xyxy]
+    try:
+        x1, y1, x2, y2 = _finite_values(box_xyxy, "xyxy box")
+    except ValueError:
+        raise
+    except (TypeError, ValueError) as exc:
+        raise ValueError("xyxy box must contain exactly four numeric values.") from exc
     if x2 <= x1 or y2 <= y1:
         raise ValueError(f"Invalid xyxy box with non-positive size: {box_xyxy}")
     return x1, y1, x2, y2
@@ -12,7 +28,7 @@ def validate_xyxy(box_xyxy):
 
 def clip_xyxy(box_xyxy, image_width, image_height):
     validate_image_size(image_width, image_height)
-    x1, y1, x2, y2 = [float(value) for value in box_xyxy]
+    x1, y1, x2, y2 = validate_xyxy(box_xyxy)
     clipped = (
         min(max(x1, 0.0), float(image_width)),
         min(max(y1, 0.0), float(image_height)),

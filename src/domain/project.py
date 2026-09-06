@@ -40,10 +40,13 @@ class ImageRecord:
         self.image_index = int(self.image_index)
         if self.image_name is None:
             self.image_name = Path(self.image_path).name
+        if (self.width is None) != (self.height is None):
+            raise ValueError("Image width and height must both be known or both be unset.")
         if self.width is not None:
             self.width = int(self.width)
-        if self.height is not None:
             self.height = int(self.height)
+            if self.width <= 0 or self.height <= 0:
+                raise ValueError("Image width and height must be positive.")
         self.annotations = [
             item if isinstance(item, Annotation) else Annotation.from_dict(item)
             for item in self.annotations
@@ -91,7 +94,10 @@ class ImageRecord:
         self.error_message = None
 
     def mark_error(self, message):
-        self.status = ImageStatus.ERROR
+        # A failed attempt must not demote valid existing annotation/review state.
+        # Pending/batch targets still become ERROR so Run Pending can retry them.
+        if self.status in {ImageStatus.NOT_PREDICTED, ImageStatus.ERROR}:
+            self.status = ImageStatus.ERROR
         self.error_message = str(message)
 
     def to_dict(self):
@@ -140,7 +146,8 @@ class ProjectState:
         self.confidence = float(self.confidence)
         if not 0.01 <= self.confidence <= 1.0:
             raise ValueError("Confidence must be between 0.01 and 1.0.")
-        self.half = bool(self.half)
+        if not isinstance(self.half, bool):
+            raise TypeError("half must be a boolean.")
         self.images = [
             item if isinstance(item, ImageRecord) else ImageRecord.from_dict(item)
             for item in self.images
@@ -151,6 +158,25 @@ class ProjectState:
         paths = [str(Path(item.image_path).resolve()).casefold() for item in self.images]
         if len(paths) != len(set(paths)):
             raise ValueError("Image paths must be unique within a project.")
+
+        annotation_ids = [
+            annotation.id
+            for image in self.images
+            for annotation in image.annotations
+        ]
+        if len(annotation_ids) != len(set(annotation_ids)):
+            raise ValueError("Annotation ids must be unique within a project.")
+        for image in self.images:
+            for annotation in image.active_annotations:
+                if not 0 <= annotation.class_id < len(self.prompts):
+                    raise ValueError(
+                        f"Annotation {annotation.id} references class id "
+                        f"{annotation.class_id}, but the project has {len(self.prompts)} classes."
+                    )
+                if self.prompts[annotation.class_id] != annotation.class_name:
+                    raise ValueError(
+                        f"Annotation {annotation.id} class metadata is inconsistent with prompts."
+                    )
 
     @property
     def class_map(self):

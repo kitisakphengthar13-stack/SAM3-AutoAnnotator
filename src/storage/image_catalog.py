@@ -1,17 +1,30 @@
 """Discover local inputs and build safe output paths."""
 
+import hashlib
 import re
+import unicodedata
 from pathlib import Path
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 BOX_CSV_NAME = "sam3_auto_annotation_box_outputs.csv"
+_WINDOWS_RESERVED = {
+    "con", "prn", "aux", "nul",
+    *(f"com{index}" for index in range(1, 10)),
+    *(f"lpt{index}" for index in range(1, 10)),
+}
 
 
 def sanitize_name(value):
-    name = str(value).strip().lower()
-    name = re.sub(r"[^a-z0-9]+", "_", name)
-    return name.strip("_") or "sam3_auto_annotation"
+    raw = str(value).strip()
+    normalized = unicodedata.normalize("NFKC", raw).casefold()
+    name = re.sub(r"[^\w]+", "_", normalized, flags=re.UNICODE).strip("_")
+    if not name:
+        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
+        name = f"sam3_auto_annotation_{digest}"
+    if name.casefold() in _WINDOWS_RESERVED:
+        name = f"_{name}"
+    return name[:96]
 
 
 def find_images(input_path):

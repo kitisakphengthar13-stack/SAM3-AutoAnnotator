@@ -53,8 +53,13 @@ def default_output_dir(project_state):
 
 def save_state_to_output(project_state, output_dir):
     output_dir = Path(output_dir)
+    previous_name = project_state.project_name
     project_state.project_name = output_dir.name
-    return save_project_state(project_state, output_dir / STATE_FILE_NAME)
+    try:
+        return save_project_state(project_state, output_dir / STATE_FILE_NAME)
+    except Exception:
+        project_state.project_name = previous_name
+        raise
 
 
 def load_state(path):
@@ -68,12 +73,30 @@ def ensure_image_sizes(project_state):
     return project_state
 
 
+def verify_source_image_sizes(project_state):
+    """Reject stale project geometry when source files changed after annotation."""
+    for image in project_state.images:
+        actual_width, actual_height = read_image_size(image.image_path)
+        if image.width is None or image.height is None:
+            image.width, image.height = actual_width, actual_height
+            continue
+        if (image.width, image.height) != (actual_width, actual_height):
+            raise ValueError(
+                f"Source image dimensions changed for {image.image_path}: "
+                f"project has {image.width}x{image.height}, file is "
+                f"{actual_width}x{actual_height}. Re-open the source as a new project "
+                "or restore the original image before exporting."
+            )
+    return project_state
+
+
 def import_yolo_project(project_state, label_dir):
     ensure_image_sizes(project_state)
     return import_yolo_detection_labels(project_state, label_dir)
 
 
 def export_project(project_state, output_dir):
+    verify_source_image_sizes(project_state)
     return export_corrected_detection(project_state, output_dir)
 
 

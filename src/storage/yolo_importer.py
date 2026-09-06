@@ -1,4 +1,6 @@
+from copy import deepcopy
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 
 from domain.geometry import clip_xyxy, validate_image_size
@@ -6,6 +8,7 @@ from domain import Annotation, AnnotationSource, ImageStatus
 
 
 SKIP_IMPORT_STATUSES = {ImageStatus.EDITED, ImageStatus.REVIEWED}
+MAX_YOLO_CLASS_ID = 10_000
 
 
 @dataclass
@@ -38,19 +41,17 @@ def class_name_for_id(class_id, prompts):
 
 
 def extend_prompts_for_class_ids(prompts, class_ids):
-    """Extend a positional class list so every imported YOLO id is addressable.
-
-    YOLO stores only integer class ids.  Placeholder names fill any missing
-    positions while remaining unique, preserving the invariant that
-    ``prompts[annotation.class_id] == annotation.class_name``.
-    """
-
     class_ids = list(class_ids)
     if not class_ids:
         return []
     highest_id = max(class_ids)
     if highest_id < 0:
         raise ValueError("Class id must be non-negative.")
+    if highest_id > MAX_YOLO_CLASS_ID:
+        raise ValueError(
+            f"Class id {highest_id} exceeds the supported import limit "
+            f"of {MAX_YOLO_CLASS_ID}."
+        )
 
     added = []
     while len(prompts) <= highest_id:
@@ -91,10 +92,17 @@ def parse_yolo_detection_line(line, image_width, image_height, prompts):
 
     class_id = int(parts[0])
     values = [float(value) for value in parts[1:]]
-    if class_id < 0:
-        raise ValueError("Class id must be non-negative.")
-    if any(value < 0 for value in values):
-        raise ValueError("YOLO coordinates must be non-negative.")
+    if class_id < 0 or class_id > MAX_YOLO_CLASS_ID:
+        raise ValueError(
+            f"Class id must be between 0 and {MAX_YOLO_CLASS_ID}."
+        )
+    if not all(isfinite(value) for value in values):
+        raise ValueError("YOLO coordinates must be finite numbers.")
+    x_center, y_center, width, height = values
+    if not 0.0 <= x_center <= 1.0 or not 0.0 <= y_center <= 1.0:
+        raise ValueError("YOLO box centers must be normalized to [0, 1].")
+    if not 0.0 < width <= 1.0 or not 0.0 < height <= 1.0:
+        raise ValueError("YOLO box width and height must be in (0, 1].")
 
     box_xyxy = yolo_xywhn_to_xyxy(*values, image_width=image_width, image_height=image_height)
     return Annotation(
@@ -121,7 +129,7 @@ def annotations_from_yolo_file(label_path, image_width, image_height, prompts):
     return annotations, invalid_lines
 
 
-def import_yolo_detection_labels(project_state, label_dir):
+def _import_yolo_detection_labels(project_state, label_dir):
     label_dir = Path(label_dir)
     summary = YoloImportSummary()
     prompts = project_state.prompts
@@ -134,12 +142,11 @@ def import_yolo_detection_labels(project_state, label_dir):
         summary.processed_images += 1
         label_path = label_dir / f"{Path(image.image_path).stem}.txt"
         if not label_path.exists():
-            image.status = ImageStatus.NOT_PREDICTED
-            image.error_message = None
             summary.missing_label_files += 1
             continue
 
-        if label_path.stat().st_size == 0 or not label_path.read_text(encoding="utf-8").strip():
+        text = label_path.read_text(encoding="utf-8")
+        if not text.strip():
             image.annotations = []
             image.status = ImageStatus.NO_DETECTION
             image.error_message = None
@@ -155,20 +162,31 @@ def import_yolo_detection_labels(project_state, label_dir):
             image_height=image.height,
             prompts=prompts,
         )
+        summary.invalid_lines += invalid_lines
+        if not annotations:
+            # A non-empty file with no valid rows is malformed, not an assertion
+            # that the image contains no objects. Preserve the previous state.
+            continue
+
         added = extend_prompts_for_class_ids(
             prompts, (annotation.class_id for annotation in annotations)
         )
         summary.added_classes += len(added)
         for annotation in annotations:
             annotation.class_name = prompts[annotation.class_id]
-        summary.invalid_lines += invalid_lines
         image.annotations = annotations
-        image.status = ImageStatus.PREDICTED if annotations else ImageStatus.NO_DETECTION
+        image.status = ImageStatus.PREDICTED
         image.error_message = None
         summary.imported_boxes += len(annotations)
-        if annotations:
-            summary.imported_images += 1
-        else:
-            summary.no_detection_images += 1
+        summary.imported_images += 1
 
+    return summary
+
+
+def import_yolo_detection_labels(project_state, label_dir):
+    """Import labels transactionally: failures never leave a half-mutated project."""
+    working = deepcopy(project_state)
+    summary = _import_yolo_detection_labels(working, label_dir)
+    project_state.prompts = working.prompts
+    project_state.images = working.images
     return summary

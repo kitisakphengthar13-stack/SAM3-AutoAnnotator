@@ -80,7 +80,24 @@ def _mask_debug_values(masks, object_index):
     return shape, area
 
 
-def best_box_prompt_segmentation(results):
+def _polygon_box_iou(polygon, requested_box, result):
+    width, height = result_image_size(result)
+    if width is None or height is None or not polygon:
+        return None
+    xs = [float(point[0]) * width for point in polygon]
+    ys = [float(point[1]) * height for point in polygon]
+    px1, py1, px2, py2 = min(xs), min(ys), max(xs), max(ys)
+    rx1, ry1, rx2, ry2 = requested_box
+    ix1, iy1 = max(px1, rx1), max(py1, ry1)
+    ix2, iy2 = min(px2, rx2), min(py2, ry2)
+    intersection = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    polygon_box_area = max(0.0, px2 - px1) * max(0.0, py2 - py1)
+    request_area = max(0.0, rx2 - rx1) * max(0.0, ry2 - ry1)
+    union = polygon_box_area + request_area - intersection
+    return intersection / union if union > 0 else 0.0
+
+
+def best_box_prompt_segmentation(results, requested_box=None):
     candidates = []
     for result_index, result in enumerate(results or []):
         masks = getattr(result, "masks", None)
@@ -99,9 +116,17 @@ def best_box_prompt_segmentation(results):
                 continue
             confidence = get_sequence_value(confidences, polygon_index)
             score = float(confidence) if confidence is not None else None
+            spatial_iou = (
+                _polygon_box_iou(polygon, requested_box, result)
+                if requested_box is not None
+                else None
+            )
+            if requested_box is not None and spatial_iou is not None and spatial_iou <= 0:
+                continue
             mask_shape, mask_area = _mask_debug_values(masks, polygon_index)
             candidates.append(
                 (
+                    -(spatial_iou if spatial_iou is not None else -1.0),
                     score is None,
                     -(score or 0.0),
                     result_index,
@@ -110,6 +135,7 @@ def best_box_prompt_segmentation(results):
                     score,
                     mask_shape,
                     mask_area,
+                    spatial_iou,
                 )
             )
 
@@ -117,13 +143,25 @@ def best_box_prompt_segmentation(results):
         logger.debug("SAM3 box prompt returned no valid polygon candidates.")
         raise ValueError("SAM3 did not return a valid polygon for the selected box.")
 
-    _, _, result_index, polygon_index, polygon, confidence, mask_shape, mask_area = sorted(candidates)[0]
+    (
+        _,
+        _,
+        _,
+        result_index,
+        polygon_index,
+        polygon,
+        confidence,
+        mask_shape,
+        mask_area,
+        spatial_iou,
+    ) = sorted(candidates)[0]
     logger.debug(
         "SAM3 box prompt selected result_index=%s polygon_index=%s confidence=%s "
-        "mask_shape=%s mask_area=%s polygon_point_count=%s",
+        "box_iou=%s mask_shape=%s mask_area=%s polygon_point_count=%s",
         result_index,
         polygon_index,
         confidence,
+        spatial_iou,
         mask_shape,
         mask_area,
         len(polygon),

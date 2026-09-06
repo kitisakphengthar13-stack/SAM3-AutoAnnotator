@@ -9,6 +9,7 @@ from threading import Lock
 
 from domain import Annotation
 from domain.geometry import validate_xyxy
+from sam3.predictor import create_box_segmenter
 from sam3.predictor_cache import PredictorCache
 from sam3.result_mapper import (
     annotations_from_sam3_result,
@@ -87,17 +88,26 @@ def _first_result(results):
 
 
 class PredictionService:
-    """Run one SAM3 request at a time while reusing the loaded predictor.
+    """Run SAM3 requests serially while reusing loaded model objects."""
 
-    The service is deliberately synchronous.  A Qt worker can call it from a
-    background thread, while this class stays usable in tests and other GUI
-    scheduling strategies.  The lock protects the stateful predictor's
-    ``set_image``/prompt sequence when a shared cache is used.
-    """
-
-    def __init__(self, predictor_cache: PredictorCache | None = None):
+    def __init__(
+        self,
+        predictor_cache: PredictorCache | None = None,
+        box_segmenter_factory=create_box_segmenter,
+    ):
         self.predictor_cache = predictor_cache or PredictorCache()
+        self._box_segmenter_factory = box_segmenter_factory
+        self._box_segmenter = None
+        self._box_segmenter_model_path = None
         self._inference_lock = Lock()
+
+    def _get_box_segmenter(self, model_file):
+        key = str(Path(model_file).resolve())
+        reused = self._box_segmenter is not None and self._box_segmenter_model_path == key
+        if not reused:
+            self._box_segmenter = self._box_segmenter_factory(key)
+            self._box_segmenter_model_path = key
+        return self._box_segmenter, reused
 
     def predict_image(
         self,
@@ -148,21 +158,25 @@ class PredictionService:
         box = validate_xyxy(box_xyxy)
         if not isinstance(class_name, str):
             raise TypeError("class_name must be a string.")
-        normalized_name = class_name.strip()
-        if not normalized_name:
+        if not class_name.strip():
             raise ValueError("class_name must not be empty.")
-        normalized_confidence = _validated_confidence(confidence)
-        use_half = _validated_half(half)
+        _validated_confidence(confidence)
+        _validated_half(half)
 
+        # Re-segmentation is a positional single-object task. Ultralytics documents
+        # SAM3SemanticPredictor bboxes as concept exemplars that can return similar
+        # objects elsewhere in the image, so use the base SAM visual-prompt API here.
         with self._inference_lock:
-            predictor, reused = self.predictor_cache.get_predictor(
-                model_path=model_file,
-                conf=normalized_confidence,
-                half=use_half,
+            segmenter, reused = self._get_box_segmenter(model_file)
+            results = segmenter.predict(
+                source=str(image_file),
+                bboxes=list(box),
+                verbose=False,
             )
-            predictor.set_image(str(image_file))
-            results = predictor(bboxes=[box], text=[normalized_name])
-            polygon_xyn, result_confidence = best_box_prompt_segmentation(results)
+            polygon_xyn, result_confidence = best_box_prompt_segmentation(
+                results,
+                requested_box=box,
+            )
 
         return BoxSegmentation(
             image_path=image_file,

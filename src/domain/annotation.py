@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from math import isfinite
 from typing import Optional
 from uuid import uuid4
 
 from domain.geometry import clip_xyxy, validate_xyxy
+from domain.segmentation import validate_polygon_xyn
 
 
 class AnnotationSource(str, Enum):
@@ -46,7 +48,10 @@ class Annotation:
         self.class_name = str(self.class_name)
         if self.original_class_id is not None:
             self.original_class_id = int(self.original_class_id)
-        self.confidence = None if self.confidence is None else float(self.confidence)
+        if self.confidence is not None:
+            self.confidence = float(self.confidence)
+            if not isfinite(self.confidence) or not 0.0 <= self.confidence <= 1.0:
+                raise ValueError("Annotation confidence must be finite and between 0 and 1.")
 
         if self.source == AnnotationSource.SAM3:
             self.original_box_xyxy = self.original_box_xyxy or self.box_xyxy
@@ -76,9 +81,7 @@ class Annotation:
 
     @property
     def can_reset_to_sam3(self):
-        return self.original_box_xyxy is not None and bool(
-            self.original_polygon_xyn or self.polygon_xyn
-        )
+        return self.original_box_xyxy is not None
 
     @property
     def is_modified_from_sam3(self):
@@ -91,7 +94,6 @@ class Annotation:
                 self.class_id != self.original_class_id,
                 self.class_name != self.original_class_name,
                 self.polygon_xyn != self.original_polygon_xyn,
-                not self.segmentation_valid,
                 self.deleted,
             )
         )
@@ -117,28 +119,27 @@ class Annotation:
         if not self.can_reset_to_sam3:
             raise ValueError("This annotation has no original SAM3 geometry to restore.")
         self.box_xyxy = validate_xyxy(self.original_box_xyxy)
-        if self.original_polygon_xyn is not None:
-            self.polygon_xyn = self.original_polygon_xyn
+        self.polygon_xyn = self.original_polygon_xyn
         if self.original_class_id is not None:
             self.class_id = int(self.original_class_id)
         if self.original_class_name is not None:
             self.class_name = self.original_class_name
         self.source = AnnotationSource.SAM3
-        self.segmentation_valid = bool(self.polygon_xyn)
+        self.segmentation_valid = bool(self.original_polygon_xyn)
         self.segmentation_source = "sam3_original" if self.segmentation_valid else None
         self.deleted = False
 
     def apply_sam3_box_prompt_segmentation(self, polygon_xyn, confidence=None):
-        if not polygon_xyn or len(polygon_xyn) < 3:
-            raise ValueError("Re-segmentation requires a polygon with at least three points.")
-        if self.original_box_xyxy is not None and self.original_polygon_xyn is None:
-            self.original_polygon_xyn = self.polygon_xyn
-        self.polygon_xyn = [[float(x), float(y)] for x, y in polygon_xyn]
+        polygon = validate_polygon_xyn(polygon_xyn)
+        self.polygon_xyn = polygon
         self.source = AnnotationSource.SAM3_REFINED
         self.segmentation_valid = True
         self.segmentation_source = "sam3_box_prompt"
         if confidence is not None:
-            self.confidence = float(confidence)
+            confidence = float(confidence)
+            if not isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+                raise ValueError("Segmentation confidence must be finite and between 0 and 1.")
+            self.confidence = confidence
         self.deleted = False
 
     def mark_deleted(self):
