@@ -261,6 +261,8 @@ class InferenceController:
         host = self.host
         host.mode = UiMode.READY if host.project is not None else UiMode.EMPTY
         host._task_project = None
+        if host.dirty:
+            host.schedule_recovery()
         host.presentation.update_actions()
         host.presentation.update_context()
         if host._close_pending:
