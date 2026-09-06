@@ -28,7 +28,8 @@ annotation workflow.
 
 - Windows 10/11 is the primary target environment.
 - Python compatible with `requirements.txt`.
-- A local SAM3 `.pt` checkpoint for inference.
+- A local SAM3 `.pt` checkpoint for inference. Only load checkpoint files from
+  sources you trust.
 - A CUDA-capable GPU is strongly recommended for practical SAM3 inference.
 
 Use **Setup -> Annotation -> Model -> Browse** to choose a checkpoint. Automatic model discovery
@@ -91,6 +92,9 @@ QMainWindow
 
 - **Dataset** and **Objects** are independent `QDockWidget`s. Close, move, float, or
   restore them from **View**.
+- At narrow window widths, **Dataset** auto-collapses to preserve canvas space while
+  **Objects** remains available. A Dataset panel you deliberately reopen stays open;
+  an auto-hidden Dataset returns when the workspace becomes wide enough.
 - **Focus Workspace** hides side docks without changing project state.
 - **F11** controls application fullscreen. **Fit** only changes image framing.
 - Canvas tools are explicit: **Select (Esc)**, **Pan (P)**, **Box (B)**.
@@ -154,7 +158,9 @@ A project output contains:
 `annotation_state.json` is the resumable editable project; CSV/YOLO exports are
 derived artifacts. Detection labels use current boxes. Segmentation labels contain
 only annotations whose normalized `polygon_xyn` is currently valid. Empty images
-receive an empty YOLO detection label file.
+receive an empty YOLO detection label file. CSV text fields that begin with common
+spreadsheet formula markers are prefixed with an apostrophe in the CSV artifact;
+this does not modify project state or YOLO labels.
 
 Source images are not copied. Export does not create `data.yaml` or dataset
 train/validation/test splits.
