@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from app_paths import MODELS_DIR, discover_default_model
@@ -12,6 +13,14 @@ from services.project_service import (
     parse_prompts,
     save_state_to_output,
 )
+from storage.project_store import (
+    clear_recovery_state,
+    newer_recovery_for,
+    save_recovery_state,
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 class ProjectController:
@@ -86,11 +95,38 @@ class ProjectController:
         if not path or not self.can_replace_project():
             return
         try:
-            project = load_state(path)
-            self.remember_path(path)
-            self.load_project(project, state_path=Path(path))
-            host.view.results.set_status("Project loaded. Continue reviewing or export.")
-            host.view.set_message("Annotation project loaded.")
+            state_path = Path(path)
+            load_path = state_path
+            recovered = False
+            candidate = newer_recovery_for(state_path)
+            if candidate is not None:
+                recovered = host.view.confirm(
+                    "Recovery Available",
+                    "A newer crash-recovery snapshot exists for this project. Restore it?",
+                    confirm_text="Restore Recovery",
+                )
+                if recovered:
+                    load_path = candidate
+                else:
+                    clear_recovery_state(state_path.parent)
+
+            project = load_state(load_path)
+            self.remember_path(state_path)
+            self.load_project(project, state_path=state_path)
+            if recovered:
+                host.dirty = True
+                host.view.history.mark_external_dirty()
+                host.presentation.update_actions()
+                host.presentation.update_context()
+                host.view.results.set_status(
+                    "Recovered unsaved changes. Save Project to keep them permanently."
+                )
+                host.view.set_message(
+                    "Crash recovery restored. Review the recovered changes, then Save Project."
+                )
+            else:
+                host.view.results.set_status("Project loaded. Continue reviewing or export.")
+                host.view.set_message("Annotation project loaded.")
         except Exception as exc:
             host.presentation.report_error(
                 "Could Not Open Project",
@@ -276,6 +312,16 @@ class ProjectController:
                 exc,
             )
 
+    def save_recovery_snapshot(self):
+        host = self.host
+        if host.project is None or not host.dirty or host.mode != UiMode.READY:
+            return
+        try:
+            output_dir = host.exports.output_dir()
+            save_recovery_state(host.project, output_dir)
+        except Exception:
+            logger.exception("Could not write crash recovery snapshot")
+
     def save_project(self):
         host = self.host
         if host.project is None:
@@ -283,10 +329,15 @@ class ProjectController:
         try:
             self.sync_project_settings()
             output_dir = host.exports.output_dir()
+            previous_output = host._saved_output_dir
             path = save_state_to_output(host.project, output_dir)
             host.current_state_path = Path(path)
             host._saved_output_dir = Path(output_dir)
             host.dirty = False
+            host.cancel_recovery_schedule()
+            clear_recovery_state(output_dir)
+            if previous_output is not None and Path(previous_output) != Path(output_dir):
+                clear_recovery_state(previous_output)
             host.view.history.mark_clean()
             host.view.results.set_status("Project state saved.")
             host.view.results.set_output_dir(output_dir)
