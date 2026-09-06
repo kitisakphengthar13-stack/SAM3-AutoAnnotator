@@ -1,6 +1,6 @@
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import QLabel, QMenu, QSizePolicy, QToolBar, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMenu, QSizePolicy, QToolBar, QWidget
 
 from gui.widgets.action_button import action_button, menu_button
 from gui.widgets.elided_label import ElidedLabel
@@ -16,27 +16,35 @@ class CommandBar(QToolBar):
         self.setFloatable(False)
         self.setIconSize(QSize(18, 18))
         self._buttons = {}
+        # One layout lets the project title surrender space before Qt's toolbar
+        # layout hides a whole command in its native overflow menu.
+        body = QWidget(self)
+        body.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self._layout = QHBoxLayout(body)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(6)
+        super().addWidget(body)
         brand = QLabel("SAM3")
         brand.setObjectName("brand")
-        self.addWidget(brand)
-        self.addSeparator()
+        self._layout.addWidget(brand)
+        self._add_separator()
         self.project_label = ElidedLabel("AutoAnnotator")
         self.project_label.setObjectName("projectSubtitle")
-        self.project_label.setMinimumWidth(140)
+        self.project_label.setMinimumWidth(0)
         self.project_label.setMaximumWidth(240)
-        self.addWidget(self.project_label)
+        self._layout.addWidget(self.project_label, 1)
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.addWidget(spacer)
+        self._layout.addWidget(spacer)
 
         self.open_menu = QMenu(self)
         for action in (actions.open_folder, actions.open_image, actions.open_state):
             self.open_menu.addAction(action)
         self.open_button = menu_button("Open", "folder", self.open_menu)
         self.open_button.setToolTip("Open images, a folder, or a saved project")
-        self.addWidget(self.open_button)
+        self._layout.addWidget(self.open_button)
         self.add_command(actions.save, icon_only=True)
-        self.addSeparator()
+        self._add_separator()
         self.run_current_button = self.add_command(actions.run_current)
         self.run_menu = QMenu(self)
         for action in (actions.run_current, actions.run_remaining):
@@ -55,14 +63,22 @@ class CommandBar(QToolBar):
         self.run_button.setToolTip(
             "Run SAM3 on this image or pending images, or import YOLO labels"
         )
-        self.addWidget(self.run_button)
+        self._layout.addWidget(self.run_button)
         self.add_command(actions.project_settings)
         self.add_command(actions.export_dialog)
+
+    def _add_separator(self):
+        separator = QFrame()
+        separator.setObjectName("commandSeparator")
+        separator.setFixedSize(1, 24)
+        self._layout.addSpacing(6)
+        self._layout.addWidget(separator)
+        self._layout.addSpacing(6)
 
     def add_command(self, action, icon_only=False):
         button = action_button(action, icon_only=icon_only)
         self._buttons[action] = button
-        self.addWidget(button)
+        self._layout.addWidget(button)
         return button
 
     def tool_button(self, action):

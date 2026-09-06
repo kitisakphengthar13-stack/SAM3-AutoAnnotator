@@ -58,6 +58,7 @@ QWidget#canvasBar { border-bottom: 1px solid #293340; }
 QWidget#toolRail { border-right: 1px solid #293340; }
 QWidget#reviewBar { border-top: 1px solid #293340; }
 QToolBar#commandBar { background: #171d25; border-bottom: 1px solid #293340; padding: 8px 12px; spacing: 6px; }
+QFrame#commandSeparator { background: #293340; }
 QToolBar::separator { background: #293340; width: 1px; margin: 7px 6px; }
 QMenuBar { background: #101419; color: #8796aa; padding: 2px 8px; }
 QMenuBar::item { padding: 4px 9px; background: transparent; }

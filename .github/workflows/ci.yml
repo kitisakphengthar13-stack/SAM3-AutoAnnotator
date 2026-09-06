@@ -49,10 +49,12 @@ jobs:
           QT_QPA_PLATFORM: windows
         run: python -m unittest discover -s tests -p test_gui_v3_interactions.py -v
       - name: Render workstation screens
+        if: success() || failure()
         env:
           QT_QPA_PLATFORM: ${{ runner.os == 'Windows' && 'windows' || 'offscreen' }}
         run: python tools/render_ui.py --output-dir ui-captures
       - name: Render at 150 percent scaling
+        if: success() || failure()
         env:
           QT_QPA_PLATFORM: ${{ runner.os == 'Windows' && 'windows' || 'offscreen' }}
           QT_SCALE_FACTOR: "1.5"
