@@ -69,6 +69,8 @@ def segmentation_skip_reason(annotation):
         return None
     if not annotation.polygon_xyn:
         return "no polygon"
+    if polygon_point_count(annotation) < 3:
+        return "polygon has too few points"
     try:
         validate_polygon_xyn(annotation.polygon_xyn)
     except (TypeError, ValueError) as exc:

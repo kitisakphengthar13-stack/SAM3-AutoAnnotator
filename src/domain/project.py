@@ -40,13 +40,14 @@ class ImageRecord:
         self.image_index = int(self.image_index)
         if self.image_name is None:
             self.image_name = Path(self.image_path).name
-        if (self.width is None) != (self.height is None):
-            raise ValueError("Image width and height must both be known or both be unset.")
         if self.width is not None:
             self.width = int(self.width)
+            if self.width <= 0:
+                raise ValueError("Image width must be positive when known.")
+        if self.height is not None:
             self.height = int(self.height)
-            if self.width <= 0 or self.height <= 0:
-                raise ValueError("Image width and height must be positive.")
+            if self.height <= 0:
+                raise ValueError("Image height must be positive when known.")
         self.annotations = [
             item if isinstance(item, Annotation) else Annotation.from_dict(item)
             for item in self.annotations
@@ -94,8 +95,6 @@ class ImageRecord:
         self.error_message = None
 
     def mark_error(self, message):
-        # A failed attempt must not demote valid existing annotation/review state.
-        # Pending/batch targets still become ERROR so Run Pending can retry them.
         if self.status in {ImageStatus.NOT_PREDICTED, ImageStatus.ERROR}:
             self.status = ImageStatus.ERROR
         self.error_message = str(message)

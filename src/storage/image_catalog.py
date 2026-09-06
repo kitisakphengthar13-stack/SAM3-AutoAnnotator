@@ -18,13 +18,25 @@ _WINDOWS_RESERVED = {
 def sanitize_name(value):
     raw = str(value).strip()
     normalized = unicodedata.normalize("NFKC", raw).casefold()
-    name = re.sub(r"[^\w]+", "_", normalized, flags=re.UNICODE).strip("_")
+    parts = []
+    pending_separator = False
+    for char in normalized:
+        category = unicodedata.category(char)
+        if char == "_" or char.isalnum() or category.startswith("M"):
+            if pending_separator and parts and parts[-1] != "_":
+                parts.append("_")
+            parts.append(char)
+            pending_separator = False
+        else:
+            pending_separator = True
+    name = "".join(parts).strip("_")
+    name = re.sub(r"_+", "_", name)
     if not name:
         digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
         name = f"sam3_auto_annotation_{digest}"
     if name.casefold() in _WINDOWS_RESERVED:
         name = f"_{name}"
-    return name[:96]
+    return name[:96].rstrip("_")
 
 
 def find_images(input_path):

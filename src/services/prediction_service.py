@@ -88,7 +88,7 @@ def _first_result(results):
 
 
 class PredictionService:
-    """Run SAM3 requests serially while reusing loaded model objects."""
+    """Run SAM3 requests serially while keeping only one model mode cached."""
 
     def __init__(
         self,
@@ -100,6 +100,10 @@ class PredictionService:
         self._box_segmenter = None
         self._box_segmenter_model_path = None
         self._inference_lock = Lock()
+
+    def _drop_box_segmenter(self):
+        self._box_segmenter = None
+        self._box_segmenter_model_path = None
 
     def _get_box_segmenter(self, model_file):
         key = str(Path(model_file).resolve())
@@ -125,6 +129,9 @@ class PredictionService:
         use_half = _validated_half(half)
 
         with self._inference_lock:
+            # Avoid retaining both the semantic predictor and visual SAM model in
+            # GPU memory. Switching modes intentionally drops the other cache.
+            self._drop_box_segmenter()
             predictor, reused = self.predictor_cache.get_predictor(
                 model_path=model_file,
                 conf=normalized_confidence,
@@ -167,6 +174,7 @@ class PredictionService:
         # SAM3SemanticPredictor bboxes as concept exemplars that can return similar
         # objects elsewhere in the image, so use the base SAM visual-prompt API here.
         with self._inference_lock:
+            self.predictor_cache.clear()
             segmenter, reused = self._get_box_segmenter(model_file)
             results = segmenter.predict(
                 source=str(image_file),
