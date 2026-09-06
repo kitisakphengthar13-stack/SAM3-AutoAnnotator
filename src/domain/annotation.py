@@ -26,12 +26,12 @@ def _strict_bool(value, field_name, *, allow_none=False):
     return value
 
 
-def _optional_polygon(polygon_xyn):
+def _loaded_polygon(polygon_xyn):
     if polygon_xyn is None:
         return None
     try:
         if len(polygon_xyn) == 0:
-            return None
+            return []
     except TypeError:
         pass
     return validate_polygon_xyn(polygon_xyn)
@@ -103,9 +103,6 @@ class Annotation:
             self.confidence = float(self.confidence)
             if not isfinite(self.confidence) or not 0.0 <= self.confidence <= 1.0:
                 raise ValueError("Annotation confidence must be finite and between 0 and 1.")
-
-        self.polygon_xyn = _optional_polygon(self.polygon_xyn)
-        self.original_polygon_xyn = _optional_polygon(self.original_polygon_xyn)
         self.deleted = _strict_bool(self.deleted, "deleted")
 
         if self.source == AnnotationSource.SAM3:
@@ -127,7 +124,7 @@ class Annotation:
                 "segmentation_valid",
                 allow_none=True,
             )
-        if self.segmentation_valid and self.polygon_xyn is None:
+        if self.segmentation_valid and not self.polygon_xyn:
             raise ValueError("A valid segmentation requires a polygon.")
         if self.segmentation_source is None and self.segmentation_valid:
             self.segmentation_source = (
@@ -234,7 +231,7 @@ class Annotation:
             box_xyxy=tuple(data["box_xyxy"]),
             source=data.get("source", AnnotationSource.SAM3),
             confidence=data.get("confidence"),
-            polygon_xyn=data.get("polygon_xyn"),
+            polygon_xyn=_loaded_polygon(data.get("polygon_xyn")),
             segmentation_valid=data.get("segmentation_valid"),
             segmentation_source=data.get("segmentation_source"),
             original_box_xyxy=(
@@ -242,7 +239,7 @@ class Annotation:
                 if data.get("original_box_xyxy") is None
                 else tuple(data["original_box_xyxy"])
             ),
-            original_polygon_xyn=data.get("original_polygon_xyn"),
+            original_polygon_xyn=_loaded_polygon(data.get("original_polygon_xyn")),
             original_class_id=data.get("original_class_id"),
             original_class_name=data.get("original_class_name"),
             deleted=data.get("deleted", False),
