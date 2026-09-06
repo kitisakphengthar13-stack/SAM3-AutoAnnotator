@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QWidgetAction,
 )
+from shiboken6 import isValid
 
 from gui.widgets.action_button import action_button, menu_button
 from gui.widgets.elided_label import ElidedLabel
@@ -44,6 +45,7 @@ class WorkCanvas(ImageCanvas):
         super().__init__(parent)
         self._actions = actions
         self._temporary_pan = False
+        self._labels_by_id = {}
         self.setBackgroundBrush(QColor("#0b0f14"))
         self.setFocusPolicy(Qt.StrongFocus)
 
@@ -112,24 +114,51 @@ class WorkCanvas(ImageCanvas):
             self._draft_item = None
         self._drawing = False
 
+    def clear_image(self):
+        self._labels_by_id.clear()
+        super().clear_image()
+
+    def remove_annotation(self, annotation_id):
+        self._labels_by_id.pop(annotation_id, None)
+        super().remove_annotation(annotation_id)
+
     def set_annotations(self, annotations):
         annotations = list(annotations)
         super().set_annotations(annotations)
-        for annotation in annotations:
-            box = self._items_by_id.get(annotation.id)
-            if annotation.deleted or box is None:
-                continue
+        active_by_id = {
+            annotation.id: annotation
+            for annotation in annotations
+            if not annotation.deleted and annotation.id in self._items_by_id
+        }
+        for annotation_id in list(self._labels_by_id):
+            label = self._labels_by_id.get(annotation_id)
+            box = self._items_by_id.get(annotation_id)
+            if (
+                annotation_id not in active_by_id
+                or not isValid(label)
+                or label.parentItem() is not box
+            ):
+                self._labels_by_id.pop(annotation_id, None)
+
+        for annotation_id, annotation in active_by_id.items():
+            box = self._items_by_id[annotation_id]
             confidence = (
                 ""
                 if annotation.confidence is None
                 else f"  {annotation.confidence:.2f}"
             )
-            label = AnnotationLabel(f"{annotation.class_name}{confidence}", box)
-            label.setBrush(QBrush(QColor("#ffffff")))
-            label.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
-            label.setAcceptedMouseButtons(Qt.NoButton)
-            label.setPos(4, 3)
-            label.setZValue(30)
+            text = f"{annotation.class_name}{confidence}"
+            label = self._labels_by_id.get(annotation_id)
+            if label is None:
+                label = AnnotationLabel(text, box)
+                label.setBrush(QBrush(QColor("#ffffff")))
+                label.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
+                label.setAcceptedMouseButtons(Qt.NoButton)
+                label.setPos(4, 3)
+                label.setZValue(30)
+                self._labels_by_id[annotation_id] = label
+            elif label.text() != text:
+                label.setText(text)
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape and not event.isAutoRepeat():
@@ -173,7 +202,7 @@ class CanvasWorkspace(QWidget):
         row = QHBoxLayout(toolbar)
         row.setContentsMargins(12, 8, 10, 8)
         row.setSpacing(8)
-        label = QLabel("Class")
+        label = QLabel("New box class")
         label.setObjectName("mutedLabel")
         row.addWidget(label)
         self.active_class_combo = QComboBox()
