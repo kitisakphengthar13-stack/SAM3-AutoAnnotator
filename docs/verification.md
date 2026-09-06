@@ -2,48 +2,74 @@
 
 ## Current implementation
 
-`main` is the canonical implementation. This document describes verification of the
-current workstation source tree and does not depend on historical development
-branches. The [visual walkthrough](v3-review.md) documents the running UI and its
-reference screenshots.
+This document describes verification of the current source tree. It deliberately
+does not claim that an unmerged branch is already present on `main`, and it avoids a
+hard-coded workflow-run number that becomes stale after every verification commit.
+The branch/commit being evaluated by GitHub Actions is the source of truth for a
+particular run.
 
-## Recorded evidence
+The [visual walkthrough](v3-review.md) documents the running UI and its reference
+screenshots.
 
-- [GitHub Actions run 34020065817](https://github.com/kitisakphengthar13-stack/SAM3-AutoAnnotator/actions/runs/34020065817)
-  verified the audited workstation changes on Linux and Windows. The complete
-  domain/offscreen GUI suite passed on both runners, the native Windows interaction
-  suite passed, and both 100% and 150% Qt renders completed successfully.
-- CI resolves the production dependency set, compiles `src`, `tests`, and `tools`,
-  runs the full suite on Linux and Windows, then runs the interaction suite again
-  with the native Windows Qt platform.
-- Rendered UI evidence is uploaded as `workstation-ui-Linux` and
-  `workstation-ui-Windows`. Artifacts expire after 14 days; selected reference
-  captures remain under `docs/screenshots/`.
+## Automated verification
 
-## What is covered
+`.github/workflows/ci.yml` runs on pushes, pull requests, and manual dispatch. For
+Python 3.12 it currently verifies:
 
-- Pointer drawing, moving, resizing, pan starting over an existing box, Esc draft
-  cancellation, temporary Space pan, wheel bounds, and independent next-box class.
-- Object edit history, selection restoration, clean saved-state markers, and
-  history barriers for non-undoable project/inference operations.
-- Save/reload/export with actual fixture files, CSV/YOLO output, segmentation
-  omission rules, preflight opening without writes, stale-output replacement, and
-  rollback protection for managed export artifacts.
-- YOLO import validation and rollback, non-finite geometry rejection, source-image
-  dimension mismatch detection, annotation-ID validation, and reset-to-SAM3
-  provenance edge cases.
-- Selected-box re-segmentation through the visual SAM box-prompt path, with spatial
+- `requirements.txt` resolves against `constraints-tested.txt`, the known-tested
+  production dependency resolution;
+- the installed Ultralytics distribution still exposes the SAM and
+  `SAM3SemanticPredictor` import contract used by production code;
+- `src`, `tests`, and `tools` compile;
+- the complete domain/offscreen GUI suite passes on Linux and Windows;
+- the interaction suite passes again with the native Windows Qt platform;
+- actual workstation screens render at 100% and 150% Qt scaling on both runners;
+- rendered evidence is uploaded as `workstation-ui-Linux` and
+  `workstation-ui-Windows` for 14 days.
+
+A green CI result is required for the exact branch HEAD being considered. Do not use
+a green run from an earlier commit as evidence for a newer HEAD.
+
+## Integrity and regression coverage
+
+The suite covers, among other paths:
+
+- pointer drawing, moving, resizing, Pan-over-object behavior, Esc draft
+  cancellation, temporary Space pan, wheel bounds, and independent next-box class;
+- incremental canvas item reuse and incremental Dataset refresh so ordinary edits do
+  not rebuild every graphics item or rescan the full dataset;
+- responsive Dataset auto-collapse/restore at narrow widths, including native
+  desktop-size behavior rather than assuming requested window geometry was granted;
+- object edit history, selection restoration, clean saved-state markers, and
+  history barriers for non-undoable project/inference operations;
+- atomic manual project saves and separate atomic crash-recovery snapshots, including
+  newer-recovery detection and cleanup without replacing the manual state;
+- Save/reload/export with actual fixture files, CSV/YOLO output, preflight opening
+  without writes, stale-output replacement, and rollback protection for managed
+  export artifacts;
+- spreadsheet-formula neutralization for CSV text fields without mutating project or
+  YOLO state;
+- YOLO import validation and project-level rollback, non-finite geometry rejection,
+  class-id bounds, and missing/malformed label behavior;
+- source-image dimension and SHA-256 fingerprint validation, including replacement
+  content with unchanged pixel dimensions;
+- annotation-ID/class/prompt invariants, strict persisted booleans, persisted polygon
+  validation, and reset-to-SAM3 provenance edge cases;
+- segmentation rejection for out-of-range/non-finite points, fewer than three
+  distinct points, zero-length edges, zero-area polygons, and self-intersection;
+- selected-box Re-segmentation through the visual SAM box-prompt path, with spatial
   result matching so a higher-confidence remote instance is not selected merely
-  because it shares the same semantic concept.
-- Display/decode errors remaining presentation-only rather than rewriting review or
-  annotation workflow state.
-- Whole-button Open/assistance menus, confidence arrow hit targets, coordinate
+  because it shares the same semantic concept;
+- display/decode errors remaining presentation-only rather than rewriting review or
+  annotation workflow state;
+- whole-button Open/assistance menus, confidence arrow hit targets, coordinate
   Apply/Cancel/keyboard behavior, Layers, dock close/float/restore, Focus Workspace
-  persistence, and maximized/fullscreen restoration.
-- Staged Setup, image review/navigation/filtering, background inference task
-  lifecycle/cancellation with fake services, and repository architecture boundaries.
+  persistence, and maximized/fullscreen restoration;
+- staged Setup, checkpoint trust warning, image review/navigation/filtering,
+  background inference task lifecycle/cancellation with fake services, and
+  repository architecture boundaries.
 
-## Run the checks
+## Run the repository checks
 
 From a prepared Windows checkout:
 
@@ -61,17 +87,38 @@ Remove-Item Env:PYTHONPATH
 
 See [the capture instructions](v3-review.md#reproduce-the-captures) for 150% scaling.
 The renderer records logical and physical sizes rather than assuming the CI
-machine's desktop resolution. It explicitly sizes reference windows, which may
-extend beyond a small runner desktop while still rendering the complete widget.
+machine's desktop resolution.
+
+## Verify a production workstation
+
+Hosted CI intentionally does not claim a real SAM3/CUDA pass because it has neither
+the user's trusted production checkpoint nor the intended GPU. First install the
+known-tested dependency resolution:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt -c constraints-tested.txt
+```
+
+Then verify imports and CUDA:
+
+```powershell
+.\.venv\Scripts\python.exe tools/verify_runtime.py --require-cuda
+```
+
+For a checkpoint you trust, exercise Ultralytics' real checkpoint load path:
+
+```powershell
+.\.venv\Scripts\python.exe tools/verify_runtime.py --require-cuda --checkpoint D:\path\to\trusted\sam3.pt
+```
+
+Finally run a manual acceptance sequence on the intended workstation: first
+prediction, predictor reuse, selected-box Re-segment, pending batch/cancel, Save,
+reload, and export. Only that sequence can support a claim about the actual
+checkpoint/GPU combination.
 
 ## Verification limits
 
-CI does not certify real SAM3 checkpoint execution or CUDA behavior because no
-production checkpoint/GPU is supplied to the workflow. Before claiming a GPU pass,
-exercise first prediction, predictor reuse, selected-box re-segmentation, pending
-batch/cancel, and saved/exported output using the intended model and GPU.
-
-Physical multi-monitor/DPI transitions, native window chrome, and pointer behavior
-on the target workstation remain distinct from runner checks. The current minimum
-client area is 960 × 620 logical pixels. Direct polygon-point editing remains
-outside this app's feature set; use a corrected box plus Re-segment.
+Physical multi-monitor/DPI transitions, native window chrome, and GPU behavior on a
+specific workstation remain distinct from hosted-runner checks. The supported
+minimum client area is 960 × 620 logical pixels. Direct polygon-point editing
+remains outside this app's feature set; use a corrected box plus Re-segment.
