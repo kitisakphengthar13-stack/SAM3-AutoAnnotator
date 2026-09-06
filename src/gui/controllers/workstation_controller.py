@@ -53,9 +53,9 @@ class WorkstationController(QObject):
             parent=self,
         )
         self._recovery_timer = QTimer(self)
-        self._recovery_timer.setInterval(10000)
+        self._recovery_timer.setSingleShot(True)
+        self._recovery_timer.setInterval(5000)
         self._recovery_timer.timeout.connect(self.projects.save_recovery_snapshot)
-        self._recovery_timer.start()
 
         self.view.set_controller(self)
         self._connect_actions()
@@ -63,11 +63,12 @@ class WorkstationController(QObject):
         self._connect_tasks()
         self.presentation.show_initial_state()
 
+    def schedule_recovery(self):
+        if self.project is not None and self.dirty and self.mode == UiMode.READY:
+            self._recovery_timer.start()
+
     def cancel_recovery_schedule(self):
-        # Keep periodic recovery active for future edits; this only prevents a
-        # pending callback from racing a successful manual save.
         self._recovery_timer.stop()
-        self._recovery_timer.start()
 
     def _connect_actions(self):
         actions = self.view.actions
