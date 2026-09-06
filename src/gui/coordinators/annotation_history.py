@@ -119,5 +119,9 @@ class AnnotationHistoryCoordinator:
         if controller is None or controller.project is not self._project:
             return
         controller.dirty = self._external_dirty or not self.stack.isClean()
+        if controller.dirty:
+            controller.schedule_recovery()
+        else:
+            controller.cancel_recovery_schedule()
         controller.presentation.update_actions()
         controller.presentation.update_context()
