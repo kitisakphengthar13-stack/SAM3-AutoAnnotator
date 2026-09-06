@@ -31,6 +31,9 @@ class ImageRecord:
     status: ImageStatus = ImageStatus.NOT_PREDICTED
     annotations: list[Annotation] = field(default_factory=list)
     error_message: Optional[str] = None
+    source_size_bytes: Optional[int] = None
+    source_mtime_ns: Optional[int] = None
+    source_sha256: Optional[str] = None
 
     def __post_init__(self):
         self.status = (
@@ -48,6 +51,19 @@ class ImageRecord:
             self.height = int(self.height)
             if self.height <= 0:
                 raise ValueError("Image height must be positive when known.")
+        if self.source_size_bytes is not None:
+            self.source_size_bytes = int(self.source_size_bytes)
+            if self.source_size_bytes < 0:
+                raise ValueError("Source file size cannot be negative.")
+        if self.source_mtime_ns is not None:
+            self.source_mtime_ns = int(self.source_mtime_ns)
+            if self.source_mtime_ns < 0:
+                raise ValueError("Source modification time cannot be negative.")
+        if self.source_sha256 is not None:
+            digest = str(self.source_sha256).strip().lower()
+            if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+                raise ValueError("Source SHA-256 must contain 64 hexadecimal characters.")
+            self.source_sha256 = digest
         self.annotations = [
             item if isinstance(item, Annotation) else Annotation.from_dict(item)
             for item in self.annotations
@@ -109,6 +125,9 @@ class ImageRecord:
             "status": self.status.value,
             "annotations": [item.to_dict() for item in self.annotations],
             "error_message": self.error_message,
+            "source_size_bytes": self.source_size_bytes,
+            "source_mtime_ns": self.source_mtime_ns,
+            "source_sha256": self.source_sha256,
         }
 
     @classmethod
@@ -122,6 +141,9 @@ class ImageRecord:
             status=data.get("status", ImageStatus.NOT_PREDICTED),
             annotations=data.get("annotations", []),
             error_message=data.get("error_message"),
+            source_size_bytes=data.get("source_size_bytes"),
+            source_mtime_ns=data.get("source_mtime_ns"),
+            source_sha256=data.get("source_sha256"),
         )
 
 
