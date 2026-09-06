@@ -90,10 +90,10 @@ def validate_polygon_xyn(polygon_xyn, *, require_three=True):
     if require_three:
         if any(current == following for current, following in zip(points, points[1:] + points[:1])):
             raise ValueError("Segmentation polygon contains a zero-length edge.")
-        if abs(_signed_area_twice(points)) <= _GEOMETRY_EPSILON:
-            raise ValueError("Segmentation polygon has zero area.")
         if _has_self_intersection(points):
             raise ValueError("Segmentation polygon self-intersects.")
+        if abs(_signed_area_twice(points)) <= _GEOMETRY_EPSILON:
+            raise ValueError("Segmentation polygon has zero area.")
     return points
 
 
