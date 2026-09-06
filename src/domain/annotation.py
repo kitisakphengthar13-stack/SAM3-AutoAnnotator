@@ -18,6 +18,35 @@ class AnnotationSource(str, Enum):
     IMPORTED = "imported"
 
 
+def _strict_bool(value, field_name, *, allow_none=False):
+    if value is None and allow_none:
+        return None
+    if not isinstance(value, bool):
+        raise TypeError(f"{field_name} must be a boolean.")
+    return value
+
+
+def _optional_polygon(polygon_xyn):
+    if polygon_xyn is None:
+        return None
+    try:
+        if len(polygon_xyn) == 0:
+            return None
+    except TypeError:
+        pass
+    return validate_polygon_xyn(polygon_xyn)
+
+
+def _class_metadata(class_id, class_name, *, prefix="Annotation"):
+    normalized_id = int(class_id)
+    normalized_name = str(class_name).strip()
+    if normalized_id < 0:
+        raise ValueError(f"{prefix} class id must be non-negative.")
+    if not normalized_name:
+        raise ValueError(f"{prefix} class name must not be empty.")
+    return normalized_id, normalized_name
+
+
 @dataclass
 class Annotation:
     class_id: int
@@ -36,6 +65,9 @@ class Annotation:
     deleted: bool = False
 
     def __post_init__(self):
+        self.id = str(self.id).strip()
+        if not self.id:
+            raise ValueError("Annotation id must not be empty.")
         self.source = (
             self.source
             if isinstance(self.source, AnnotationSource)
@@ -44,14 +76,37 @@ class Annotation:
         self.box_xyxy = validate_xyxy(self.box_xyxy)
         if self.original_box_xyxy is not None:
             self.original_box_xyxy = validate_xyxy(self.original_box_xyxy)
-        self.class_id = int(self.class_id)
-        self.class_name = str(self.class_name)
+
+        self.class_id, self.class_name = _class_metadata(
+            self.class_id, self.class_name
+        )
         if self.original_class_id is not None:
-            self.original_class_id = int(self.original_class_id)
+            original_name = (
+                self.class_name
+                if self.original_class_name is None
+                else self.original_class_name
+            )
+            self.original_class_id, normalized_original_name = _class_metadata(
+                self.original_class_id,
+                original_name,
+                prefix="Original annotation",
+            )
+            if self.original_class_name is not None:
+                self.original_class_name = normalized_original_name
+        elif self.original_class_name is not None:
+            normalized_name = str(self.original_class_name).strip()
+            if not normalized_name:
+                raise ValueError("Original annotation class name must not be empty.")
+            self.original_class_name = normalized_name
+
         if self.confidence is not None:
             self.confidence = float(self.confidence)
             if not isfinite(self.confidence) or not 0.0 <= self.confidence <= 1.0:
                 raise ValueError("Annotation confidence must be finite and between 0 and 1.")
+
+        self.polygon_xyn = _optional_polygon(self.polygon_xyn)
+        self.original_polygon_xyn = _optional_polygon(self.original_polygon_xyn)
+        self.deleted = _strict_bool(self.deleted, "deleted")
 
         if self.source == AnnotationSource.SAM3:
             self.original_box_xyxy = self.original_box_xyxy or self.box_xyxy
@@ -67,7 +122,13 @@ class Annotation:
                 self.source == AnnotationSource.SAM3 and bool(self.polygon_xyn)
             )
         else:
-            self.segmentation_valid = bool(self.segmentation_valid)
+            self.segmentation_valid = _strict_bool(
+                self.segmentation_valid,
+                "segmentation_valid",
+                allow_none=True,
+            )
+        if self.segmentation_valid and self.polygon_xyn is None:
+            raise ValueError("A valid segmentation requires a polygon.")
         if self.segmentation_source is None and self.segmentation_valid:
             self.segmentation_source = (
                 "sam3_box_prompt"
@@ -109,8 +170,7 @@ class Annotation:
         self.deleted = False
 
     def change_class(self, class_id, class_name):
-        self.class_id = int(class_id)
-        self.class_name = str(class_name)
+        self.class_id, self.class_name = _class_metadata(class_id, class_name)
         self.source = AnnotationSource.EDITED
         self.segmentation_valid = False
         self.deleted = False
@@ -185,5 +245,5 @@ class Annotation:
             original_polygon_xyn=data.get("original_polygon_xyn"),
             original_class_id=data.get("original_class_id"),
             original_class_name=data.get("original_class_name"),
-            deleted=bool(data.get("deleted", False)),
+            deleted=data.get("deleted", False),
         )
