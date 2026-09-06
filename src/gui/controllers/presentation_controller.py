@@ -123,6 +123,7 @@ class PresentationController:
         host.dirty = True
         if not history_managed:
             host.view.history.mark_external_dirty()
+        host.schedule_recovery()
         if refresh:
             self.update_actions()
             self.update_context()
