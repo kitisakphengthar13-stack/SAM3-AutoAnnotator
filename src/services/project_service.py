@@ -31,7 +31,7 @@ def _record_source_fingerprint(image, fingerprint):
 
 
 def initialize_source_integrity(project_state):
-    """Capture immutable source baselines for newly created or legacy projects."""
+    """Capture immutable source baselines for newly created projects."""
     for image in project_state.images:
         actual_width, actual_height = read_image_size(image.image_path)
         if image.width is not None and image.height is not None:
@@ -91,7 +91,9 @@ def save_state_to_output(project_state, output_dir):
 
 def load_state(path):
     project = load_project_state(path)
-    return initialize_source_integrity(project)
+    # Existing fingerprints are validated; legacy states without fingerprints are
+    # upgraded in memory using the current source after dimension validation.
+    return verify_source_image_sizes(project)
 
 
 def ensure_image_sizes(project_state):
@@ -102,7 +104,7 @@ def ensure_image_sizes(project_state):
 
 
 def verify_source_image_sizes(project_state):
-    """Reject stale geometry or changed source content before save/export."""
+    """Reject stale geometry or changed source content before load/save/export."""
     for image in project_state.images:
         actual_width, actual_height = read_image_size(image.image_path)
         if image.width is None or image.height is None:
