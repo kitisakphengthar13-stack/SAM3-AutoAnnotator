@@ -33,7 +33,7 @@ class AnnotationStateValidationTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     Annotation.from_dict(state)
 
-    def test_empty_polygon_is_normalized_to_box_only_annotation(self):
+    def test_empty_runtime_polygon_remains_box_only_annotation(self):
         annotation = Annotation(
             class_id=0,
             class_name="car",
@@ -41,8 +41,8 @@ class AnnotationStateValidationTests(unittest.TestCase):
             source=AnnotationSource.SAM3,
             polygon_xyn=[],
         )
-        self.assertIsNone(annotation.polygon_xyn)
-        self.assertIsNone(annotation.original_polygon_xyn)
+        self.assertEqual(annotation.polygon_xyn, [])
+        self.assertEqual(annotation.original_polygon_xyn, [])
         self.assertFalse(annotation.segmentation_valid)
 
     def test_valid_segmentation_requires_polygon(self):
