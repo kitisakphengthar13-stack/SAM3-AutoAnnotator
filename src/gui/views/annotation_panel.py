@@ -65,7 +65,7 @@ class AnnotationPanel(QWidget):
             self.annotation_table.setColumnHidden(column, True)
         layout.addWidget(self.annotation_table, 1)
         self.empty_label = QLabel(
-            "No objects yet.\nDraw a box or use Assist to get started."
+            "No objects yet.\nDraw a box or run SAM3 to get started."
         )
         self.empty_label.setObjectName("selectionEmpty")
         self.empty_label.setWordWrap(True)
@@ -125,6 +125,7 @@ class AnnotationPanel(QWidget):
         details.addWidget(self.coordinates_button)
         self.coordinates_dialog = QDialog(self)
         self.coordinates_dialog.setWindowTitle("Box coordinates")
+        self.coordinates_dialog.addAction(actions.apply_box)
         self.coordinates_dialog.setWindowModality(Qt.WindowModal)
         self.coordinates_dialog.resize(420, 300)
         dialog_layout = QVBoxLayout(self.coordinates_dialog)

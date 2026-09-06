@@ -1,6 +1,14 @@
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMenu, QSizePolicy, QToolBar, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMenu,
+    QSizePolicy,
+    QToolBar,
+    QWidget,
+)
 
 from gui.widgets.action_button import action_button, menu_button
 from gui.widgets.elided_label import ElidedLabel

@@ -11,20 +11,21 @@ class ClassPromptEditor(QPlainTextEdit):
         super().__init__(parent)
         self._visible_rows = max(2, int(visible_rows))
         self.setLineWrapMode(QPlainTextEdit.WidgetWidth)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
     def sizeHint(self):
         hint = super().sizeHint()
         line_height = self.fontMetrics().lineSpacing()
         document_padding = 12
         hint.setHeight(
-            line_height * self._visible_rows
-            + document_padding
-            + 2 * self.frameWidth()
+            line_height * self._visible_rows + document_padding + 2 * self.frameWidth()
         )
         return QSize(hint)
 
     def minimumSizeHint(self):
         hint = self.sizeHint()
         hint.setWidth(80)
+        hint.setHeight(
+            self.fontMetrics().lineSpacing() * 3 + 12 + 2 * self.frameWidth()
+        )
         return hint

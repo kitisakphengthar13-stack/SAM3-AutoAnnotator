@@ -124,15 +124,21 @@ floated, and restored from View.
 
 ### Objects dock
 
-The object table is primary. Compact selected-object controls provide class,
-coordinates, re-segmentation, reset, and delete. Class identity remains visible on
+The existing object model is rendered as cards by `ObjectDelegate`; hidden metadata
+columns remain available to the model, while class/confidence/source/mask state
+are painted together. Selected-object controls provide class, re-segmentation,
+reset, and delete. Exact coordinates use a window-modal Apply/Cancel dialog with
+a draft snapshot; `AnnotationController` still owns validation and undo commits. Class identity remains visible on
 the canvas when this dock is hidden.
 
 ### Canvas workspace
 
 Owns image rendering/editable boxes, class/confidence labels, an independent active
 class for the next box, Select/Pan/Box tools, Space-pan, zoom/100%/Fit, overlays,
-and inference progress.
+and inference progress. Project commands remain in the top bar, while object tools
+and history occupy the vertical rail and review/navigation sit below the image.
+`DatasetDelegate` and bundled SVG icons provide consistent rendering across Qt
+platform styles. `theme.py` styles both the widgets and native palette fallbacks.
 
 The active drawing class is not the selected-object class editor. Manual box
 creation reads the visible active class directly.
@@ -243,12 +249,12 @@ lives outside the repository by default.
 
 Tests assert user-visible behavior and architecture boundaries rather than the old
 widget tree. CI uses `PYTHONPATH=src`, dependency-resolves production requirements,
-compiles `src` and `tests`, and runs the complete offscreen suite on each branch
-head.
+compiles `src`, `tests`, and `tools`, and runs the complete offscreen suite on Linux
+and Windows. Windows also runs pointer/keyboard checks with its native Qt plugin.
+`tools/render_ui.py` produces real fixture-based screens at two Qt scales.
 
-Offscreen Qt tests are necessary but not sufficient. Visible Windows verification
-is still required for native title-bar behavior, maximized/fullscreen restoration,
-dock interaction, high-DPI scaling, pointer hit targets, toolbar overflow, and
-keyboard shortcuts. Real SAM3/CUDA validation remains a separate hardware check.
+Native Windows tests and rendered captures cover dock controls, fullscreen
+restoration, command visibility, pointer edits, and keyboard Apply. Physical
+monitor transitions and real SAM3/CUDA validation remain separate hardware checks.
 
 The concrete interaction contract lives in [UI audit](ui-audit.md).

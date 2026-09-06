@@ -1,0 +1,193 @@
+{
+  "qt": "6.11.2",
+  "platform": "offscreen",
+  "scale_factor": "1",
+  "desktop_available": [
+    800,
+    800
+  ],
+  "screens": {
+    "welcome": {
+      "logical_size": [
+        1360,
+        840
+      ],
+      "pixels": [
+        1360,
+        840
+      ],
+      "canvas": [
+        640,
+        480
+      ]
+    },
+    "workspace-1360": {
+      "logical_size": [
+        1360,
+        840
+      ],
+      "pixels": [
+        1360,
+        840
+      ],
+      "canvas": [
+        774,
+        597
+      ]
+    },
+    "workspace-960": {
+      "logical_size": [
+        960,
+        620
+      ],
+      "pixels": [
+        960,
+        620
+      ],
+      "canvas": [
+        374,
+        377
+      ]
+    },
+    "coordinates": {
+      "logical_size": [
+        420,
+        300
+      ],
+      "pixels": [
+        420,
+        300
+      ],
+      "canvas": [
+        374,
+        377
+      ]
+    },
+    "focus-960": {
+      "logical_size": [
+        960,
+        620
+      ],
+      "pixels": [
+        960,
+        620
+      ],
+      "canvas": [
+        908,
+        377
+      ]
+    },
+    "setup": {
+      "logical_size": [
+        720,
+        590
+      ],
+      "pixels": [
+        720,
+        590
+      ],
+      "canvas": [
+        374,
+        377
+      ]
+    },
+    "setup-files": {
+      "logical_size": [
+        720,
+        590
+      ],
+      "pixels": [
+        720,
+        590
+      ],
+      "canvas": [
+        374,
+        377
+      ]
+    },
+    "export-preflight": {
+      "logical_size": [
+        640,
+        610
+      ],
+      "pixels": [
+        640,
+        610
+      ],
+      "canvas": [
+        374,
+        377
+      ]
+    },
+    "export-complete": {
+      "logical_size": [
+        640,
+        610
+      ],
+      "pixels": [
+        640,
+        610
+      ],
+      "canvas": [
+        374,
+        377
+      ]
+    },
+    "export-files": {
+      "logical_size": [
+        640,
+        610
+      ],
+      "pixels": [
+        640,
+        610
+      ],
+      "canvas": [
+        374,
+        377
+      ]
+    },
+    "shortcuts": {
+      "logical_size": [
+        432,
+        352
+      ],
+      "pixels": [
+        432,
+        352
+      ],
+      "canvas": [
+        374,
+        377
+      ]
+    },
+    "no-matches": {
+      "logical_size": [
+        960,
+        620
+      ],
+      "pixels": [
+        960,
+        620
+      ],
+      "canvas": [
+        374,
+        377
+      ]
+    },
+    "image-error": {
+      "logical_size": [
+        960,
+        620
+      ],
+      "pixels": [
+        960,
+        620
+      ],
+      "canvas": [
+        374,
+        377
+      ]
+    }
+  }
+}

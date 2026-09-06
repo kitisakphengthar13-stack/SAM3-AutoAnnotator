@@ -284,6 +284,12 @@ class WorkstationV3Tests(unittest.TestCase):
         spin = w.setup.conf_edit
         option = QStyleOptionSpinBox()
         spin.initStyleOption(option)
+        field_rect = spin.style().subControlRect(
+            QStyle.CC_SpinBox, option, QStyle.SC_SpinBoxEditField, spin
+        )
+        self.assertGreaterEqual(
+            field_rect.width(), spin.fontMetrics().horizontalAdvance("0.50") + 8
+        )
         for control, expected in (
             (QStyle.SC_SpinBoxUp, 0.55),
             (QStyle.SC_SpinBoxDown, 0.5),
@@ -324,6 +330,65 @@ class WorkstationV3Tests(unittest.TestCase):
         self.assertEqual(self.controller.selected_annotation.box_xyxy[0], 125)
         w.actions.undo.trigger()
         self.assertEqual(self.controller.selected_annotation.box_xyxy, before)
+
+    def test_coordinates_keyboard_apply_and_invalid_draft_recovery(self):
+        self.add_box()
+        panel = self.window.annotation
+        before = self.controller.selected_annotation.box_xyxy
+        panel.show_coordinates()
+        panel.coordinates_dialog.activateWindow()
+        QCoreApplication.processEvents()
+        panel.x1_edit.set_value(125)
+        QTest.keyClick(panel.x1_edit, Qt.Key_Return, Qt.ControlModifier)
+        self.assertFalse(panel.coordinates_dialog.isVisible())
+        self.assertEqual(self.controller.selected_annotation.box_xyxy[0], 125)
+        self.window.actions.undo.trigger()
+        self.assertEqual(self.controller.selected_annotation.box_xyxy, before)
+        panel.show_coordinates()
+        panel.x1_edit.set_value(900)
+        self.controller.annotations.apply_box_fields()
+        self.assertTrue(panel.coordinates_dialog.isVisible())
+        self.assertEqual(self.controller.selected_annotation.box_xyxy, before)
+        self.assertEqual(len(self.errors), 1)
+        panel.coordinates_dialog.reject()
+        self.assertEqual(panel.x1_edit.value(), before[0])
+
+    def test_layers_popup_changes_canvas_visibility_with_pointer(self):
+        annotation = self.add_box()
+        area = self.window.canvas_area
+        observed = []
+
+        def toggle():
+            observed.append(area.overlay_menu.isVisible())
+            QTest.mouseClick(area.show_boxes_check, Qt.LeftButton)
+            area.overlay_menu.close()
+
+        QTimer.singleShot(30, toggle)
+        QTest.mouseClick(area.overlay_button, Qt.LeftButton)
+        self.assertEqual(observed, [True])
+        self.assertFalse(area.show_boxes_check.isChecked())
+        self.assertFalse(self.window.canvas._items_by_id[annotation.id].isVisible())
+        self.assertEqual(
+            self.controller.current_image.annotation_by_id(annotation.id).box_xyxy,
+            annotation.box_xyxy,
+        )
+
+    def test_export_destination_stays_visible_in_short_dialog(self):
+        self.add_box()
+        w = self.window
+        w.show_export_preflight()
+        w.results_dialog.resize(640, 499)
+        QCoreApplication.processEvents()
+        path = w.results.destination_label
+        origin = path.mapTo(w.results_dialog, QPoint())
+        self.assertTrue(w.results_dialog.rect().contains(origin))
+        self.assertTrue(
+            w.results_dialog.rect().contains(
+                origin + QPoint(path.width() - 1, path.height() - 1)
+            )
+        )
+        self.assertTrue(w.results.export_button.isVisible())
+        self.assertFalse((self.root / "output" / "yolo_labels").exists())
 
     def test_focus_layout_save_does_not_permanently_hide_panels(self):
         w = self.window

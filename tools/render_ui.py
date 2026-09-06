@@ -36,6 +36,9 @@ def main():
         "qt": qVersion(),
         "platform": app.platformName(),
         "scale_factor": os.environ.get("QT_SCALE_FACTOR", "1"),
+        "desktop_available": list(
+            app.primaryScreen().availableGeometry().size().toTuple()
+        ),
         "screens": {},
     }
     with tempfile.TemporaryDirectory(prefix="sam3-ui-") as temp:
@@ -59,6 +62,7 @@ def main():
                 "canvas": list(window.canvas.size().toTuple()),
             }
 
+        window.resize(1360, 840)
         capture("welcome")
         project = create_project(
             ROOT / "tests/fixtures/images", prompts=["car", "person", "traffic light"]
@@ -85,11 +89,13 @@ def main():
         capture("focus-960")
         window.actions.focus_workspace.setChecked(False)
         window.show_setup()
+        window.setup_dialog.resize(720, 590)
         capture("setup", window.setup_dialog)
         window.setup.tabs.setCurrentIndex(1)
         capture("setup-files", window.setup_dialog)
         window.setup_dialog.reject()
         window.show_export_preflight()
+        window.results_dialog.resize(640, 610)
         capture("export-preflight", window.results_dialog)
         # This writes only into the temporary demonstration project.
         window.actions.export.trigger()

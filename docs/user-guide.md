@@ -13,6 +13,8 @@ only when you open a saved `annotation_state.json`.
 
 ## 2. Open or resume work
 
+Use the top **Open** menu or the File menu:
+
 - **Open Image** starts a one-image project.
 - **Open Folder** loads supported images directly in one folder; it is
   non-recursive.
@@ -28,20 +30,23 @@ from those stems.
 
 The application is canvas-first:
 
-- **Dataset dock**: image search/filter/list and navigation.
+- **Dataset dock**: numbered image cards, search/status filter, and review progress.
 - **Canvas**: image, objects, overlays, Select/Pan/Box tools, active class, zoom,
   Fit, and task progress.
-- **Objects dock**: object list and compact selected-object controls.
+- **Objects dock**: object cards with class, confidence, source, and mask status;
+  selected-object controls appear below the list.
 - **Setup**: transient configuration dialog.
 - **Export**: transient preflight/result dialog.
 
 Dataset and Objects can be closed, moved, floated, and restored from **View**.
 **Focus Workspace** hides them temporarily. **F11** is actual window fullscreen;
-**Fit** only changes image framing.
+**Fit** only changes image framing. **View → Reset Workspace Layout** restores the
+default dock arrangement; **F1** opens the shortcut reference.
 
 ## 4. Configure the project
 
-Open **Setup**. Its fields are staged drafts:
+Open **Setup**. The **Annotation** tab contains the model, classes, confidence,
+and precision. **Files and output** contains the destination. Fields are staged drafts:
 
 - **Output**: project/export destination.
 - **Model**: local SAM3 `.pt` checkpoint.
@@ -66,13 +71,13 @@ image already contains active annotations, replacing them may require confirmati
 
 ### Run pending images
 
-Use **Run Pending (N)** for images whose status is `not_predicted` or `error`.
+Open **…** beside Run SAM3 and choose **Run Pending (N)** for images whose status is `not_predicted` or `error`.
 Predicted, edited, reviewed, and no-detection images are skipped. Batch cancel is
 cooperative and takes effect after the current inference call.
 
 ### Import YOLO detections
 
-Use **Import YOLO** and choose a label folder containing rows in this format:
+Use **… → Import YOLO** (or **Ctrl+I**) and choose a label folder containing rows in this format:
 
 ```text
 class_id x_center y_center width height
@@ -91,16 +96,22 @@ Tools are explicit and mutually exclusive:
 - **Select (`Esc`)**: select, move, and resize objects.
 - **Pan (`P`)**: pan without editing objects.
 - **Box (`B`)**: draw a new box using the visible active class.
-- Hold **Space** for temporary pan.
+- Hold **Space** while the canvas has focus for temporary pan from Select or Box;
+  releasing it restores the tool. **Esc** cancels an unfinished box.
 
 The active class beside the canvas is the class for the **next new box**. It is
 independent of the class editor for the selected existing object.
 
 Canvas objects display class and, when available, confidence. Use Zoom Out,
-**100%**, Zoom In, Fit, or the mouse wheel for scale changes.
+**100%**, Zoom In, Fit, or the mouse wheel for scale changes. Wheel/button zoom
+is bounded from 5% to 2000%; the live percentage is below the image. **Layers**
+opens independent Boxes, Masks, and Polygons visibility controls.
 
-The Objects dock provides precise class and `x1, y1, x2, y2` editing plus
-Re-segment, Reset, and Delete.
+The Objects dock provides a class selector and an Apply checkmark, plus
+Re-segment, Reset, and Delete. **Edit coordinates…** opens `x1, y1, x2, y2`
+in a separate dialog. **Apply Box** or **Ctrl+Return** commits a valid edit;
+**Cancel**, Esc, or closing the dialog discards the coordinate draft. Invalid
+coordinates keep the dialog open for correction.
 
 Changing a SAM3 box or class marks it edited and invalidates segmentation derived
 from old geometry/class. Unchanged Apply operations are no-ops.
@@ -167,8 +178,10 @@ Generated artifacts include:
 - `segmentation_skipped_report.json` when segmentation is omitted;
 - `run_summary.json`.
 
+After export, the same dialog shows the completion summary and **Open Output
+Folder**. **Files and preview** shows the generated paths and an inspection image.
 **Save Preview** creates an inspection image using current overlays; it is not a
-training label.
+training label. **Done** closes the result dialog.
 
 ## Image statuses
 
@@ -209,6 +222,7 @@ training label.
 | `Ctrl+Shift+F` | Focus Workspace |
 | `F11` | Fullscreen |
 | `Ctrl+E` | Open Export preflight |
+| `F1` | Keyboard shortcut reference |
 
 Shared Qt actions keep menu/toolbar/button enabled state, tooltip, and shortcut tied
 to one command definition.
@@ -221,12 +235,12 @@ to one command definition.
 - For skipped segmentation, inspect `segmentation_skipped_report.json`, correct the
   object, and Re-segment when appropriate.
 - Unexpected errors include the diagnostic log path in the dialog.
-- If dock placement becomes inconvenient, restore panels from View and reposition
-  them; Qt persists `QMainWindow` state for the next launch.
+- If dock placement becomes inconvenient, use **View → Reset Workspace Layout**;
+  Qt persists the layout for the next launch. Closing while Focus Workspace is
+  active does not permanently hide both panels.
 
 ## Verification limits
 
-Automated offscreen tests validate workflow and architecture behavior but do not
-replace visible Windows checks for native maximize/fullscreen, DPI scaling, dock
-hit targets, text clipping, or toolbar behavior. Real SAM3/CUDA inference likewise
-requires the target GPU/checkpoint.
+CI covers offscreen workflows on Linux/Windows, native Windows interaction checks,
+and rendered screens at two Qt scales. These runs do not replace testing the actual
+GPU/checkpoint or the physical monitor setup. See [verification](verification.md).

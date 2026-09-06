@@ -32,7 +32,8 @@ The editor has explicit, mutually exclusive tools:
 - **Select** (`Esc`) selects, moves, and resizes objects.
 - **Pan** (`P`) pans without changing annotation data.
 - **Box** (`B`) draws a new box using the visible active class.
-- Space temporarily pans while Select is active.
+- Space temporarily pans from Select or Box and restores the tool on release or
+  loss of focus. Esc cancels an unfinished box.
 
 The next-box class and selected-object class are independent selections. Choosing
 the class for a future box must not silently reclassify the selected object.
@@ -50,7 +51,7 @@ the scene effectively disappear.
 Routine annotation editing must optimize throughput without removing recovery:
 
 - Add, move/resize, class change, coordinate Apply, Reset, and Delete are undoable.
-- Undo/Redo use the standard platform shortcuts and are visible in Edit/top command UI.
+- Undo/Redo use the standard platform shortcuts and are visible in Edit and the canvas tool rail.
 - Single-object Delete is immediate; it does not interrupt every deletion with a
   confirmation dialog because Undo is the recovery path.
 - Inference boundaries clear annotation undo history so an old snapshot cannot be
@@ -66,7 +67,7 @@ Routine annotation editing must optimize throughput without removing recovery:
 - Dataset search/status filters may change which image is considered next.
 - The Objects list is the primary content of the right dock; selected-object fields
   are compact contextual controls below it, not a large fixed-height form that
-  displaces the object list.
+  displaces the object list. Exact coordinates use a separate Apply/Cancel dialog.
 
 ## Setup transaction contract
 
@@ -99,10 +100,11 @@ results and output paths remain in the same transient dialog after completion.
 
 ## Command-bar contract
 
-The global command bar stays intentionally small. Dense editing tools live beside
-the canvas. Previous/Next and Undo/Redo use compact icon-only toolbar buttons so
-the minimum `960 x 620` window does not require a toolbar overflow chevron merely
-because every command was given full text.
+The global command bar contains Open, Save, Run SAM3, its assistance menu, Setup,
+and Export. A flexible project label gives way before a command can be hidden.
+Previous/Next and Review & Next sit below the image. Select/Pan/Box, Undo/Redo,
+and zoom/100%/Fit occupy the canvas tool rail. All project commands must remain
+visible at `960 x 620` with native Windows font metrics.
 
 ## State and data integrity
 
@@ -129,7 +131,8 @@ size. Acceptance is outcome based rather than panel-width based:
 - tool checked state, selected object, disabled actions, and running tasks remain
   visible beyond color alone.
 
-Automated Qt tests cover the application contract but do not replace visible
-Windows verification. Native title-bar behavior, dock interaction, high-DPI
-scaling, fullscreen/maximize restoration, real pointer hit targets, and real SAM3
-inference still require execution on the target environment.
+The v3 evidence combines automated Qt workflows, native Windows pointer/keyboard
+checks, and actual application captures at 100% and 150% Qt scaling. Font, spacing,
+contrast, clipping, and control visibility must be inspected in those captures.
+Physical multi-monitor behavior and real SAM3 inference still require the target
+environment. See [the visual walkthrough](v3-review.md) and [verification](verification.md).

@@ -207,7 +207,7 @@ class AppActions(QObject):
             "Restore the original SAM3 annotation.",
         )
         self.mark_reviewed = self._action(
-            "Review & Next",
+            "Review && Next",
             "reviewed",
             "R",
             "Mark the selected image reviewed and advance when possible.",

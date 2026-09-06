@@ -88,7 +88,7 @@ class SetupPanel(QWidget):
         self.conf_edit.setSingleStep(0.05)
         self.conf_edit.setValue(0.5)
         self.conf_edit.setKeyboardTracking(False)
-        self.conf_edit.setFixedWidth(100)
+        self.conf_edit.setFixedWidth(130)
         self.conf_edit.setToolTip(
             "Keep predictions at or above this confidence. Lower values return more candidates."
         )
