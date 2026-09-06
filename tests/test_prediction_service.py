@@ -42,6 +42,16 @@ class FakePredictor:
         return [self.result]
 
 
+class FakeBoxSegmenter:
+    def __init__(self, result):
+        self.result = result
+        self.calls = []
+
+    def predict(self, **kwargs):
+        self.calls.append(kwargs)
+        return [self.result]
+
+
 class PredictionServiceTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -51,13 +61,22 @@ class PredictionServiceTests(unittest.TestCase):
         self.image_path.write_bytes(b"fake image")
         self.model_path.write_bytes(b"fake weights")
         self.predictor = FakePredictor(FakeResult())
+        self.box_segmenter = FakeBoxSegmenter(FakeResult())
         self.factory_calls = []
+        self.box_factory_calls = []
 
         def factory(model_path, conf, half):
             self.factory_calls.append((model_path, conf, half))
             return self.predictor
 
-        self.service = PredictionService(PredictorCache(factory=factory))
+        def box_factory(model_path):
+            self.box_factory_calls.append(model_path)
+            return self.box_segmenter
+
+        self.service = PredictionService(
+            PredictorCache(factory=factory),
+            box_segmenter_factory=box_factory,
+        )
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -87,8 +106,16 @@ class PredictionServiceTests(unittest.TestCase):
         self.assertEqual(len(self.factory_calls), 1)
         self.assertEqual(self.predictor.calls[0], {"text": ["car"]})
 
-    def test_box_prompt_uses_xyxy_and_selects_valid_polygon(self):
-        result = self.service.segment_box(
+    def test_box_prompt_uses_visual_sam_interface_and_reuses_model(self):
+        first = self.service.segment_box(
+            image_path=self.image_path,
+            model_path=self.model_path,
+            box_xyxy=(5, 6, 70, 80),
+            class_name="car",
+            confidence=0.5,
+            half=False,
+        )
+        second = self.service.segment_box(
             image_path=self.image_path,
             model_path=self.model_path,
             box_xyxy=(5, 6, 70, 80),
@@ -97,16 +124,24 @@ class PredictionServiceTests(unittest.TestCase):
             half=False,
         )
 
-        self.assertEqual(result.box_xyxy, (5.0, 6.0, 70.0, 80.0))
+        self.assertFalse(first.reused_predictor)
+        self.assertTrue(second.reused_predictor)
+        self.assertEqual(first.box_xyxy, (5.0, 6.0, 70.0, 80.0))
         self.assertEqual(
-            result.polygon_xyn,
+            first.polygon_xyn,
             [[0.1, 0.2], [0.5, 0.2], [0.5, 0.8]],
         )
-        self.assertEqual(result.confidence, 0.85)
+        self.assertEqual(first.confidence, 0.85)
+        self.assertEqual(len(self.box_factory_calls), 1)
         self.assertEqual(
-            self.predictor.calls[-1],
-            {"bboxes": [(5.0, 6.0, 70.0, 80.0)], "text": ["car"]},
+            self.box_segmenter.calls[0],
+            {
+                "source": str(self.image_path.resolve()),
+                "bboxes": [5.0, 6.0, 70.0, 80.0],
+                "verbose": False,
+            },
         )
+        self.assertEqual(self.predictor.calls, [])
 
     def test_input_validation_happens_before_predictor_creation(self):
         with self.assertRaises(TypeError):
@@ -139,6 +174,7 @@ class PredictionServiceTests(unittest.TestCase):
             )
 
         self.assertEqual(self.factory_calls, [])
+        self.assertEqual(self.box_factory_calls, [])
 
     def test_empty_predictor_result_has_a_clear_error(self):
         class EmptyPredictor(FakePredictor):
@@ -147,7 +183,8 @@ class PredictionServiceTests(unittest.TestCase):
                 return []
 
         service = PredictionService(
-            PredictorCache(factory=lambda **_: EmptyPredictor(None))
+            PredictorCache(factory=lambda **_: EmptyPredictor(None)),
+            box_segmenter_factory=lambda _: self.box_segmenter,
         )
 
         with self.assertRaisesRegex(ValueError, "no prediction results"):
