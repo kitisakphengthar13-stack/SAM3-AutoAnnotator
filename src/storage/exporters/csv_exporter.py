@@ -42,9 +42,22 @@ BOX_FIELDS = [
     "confidence",
 ]
 
+_DANGEROUS_SPREADSHEET_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n")
+
+
+def spreadsheet_safe_cell(value):
+    """Neutralize text that spreadsheet applications may execute as a formula."""
+    if isinstance(value, str) and value.startswith(_DANGEROUS_SPREADSHEET_PREFIXES):
+        return "'" + value
+    return value
+
+
+def _safe_row(row, fieldnames):
+    return {field: spreadsheet_safe_cell(row.get(field, "")) for field in fieldnames}
+
 
 def write_csv(path, rows, fieldnames):
     with path.open("w", newline="", encoding="utf-8") as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(_safe_row(row, fieldnames) for row in rows)
