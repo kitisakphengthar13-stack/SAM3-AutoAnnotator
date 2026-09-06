@@ -400,6 +400,10 @@ class WorkstationV3Tests(unittest.TestCase):
         settings.restore_window(restored)
         QCoreApplication.processEvents()
         try:
+            # The saved geometry is narrow, so Dataset is allowed to auto-collapse.
+            # Expanding must prove that Focus Workspace did not persistently hide it.
+            restored.resize(1360, 840)
+            QCoreApplication.processEvents()
             self.assertTrue(restored.dataset_dock.isVisible())
             self.assertTrue(restored.annotation_dock.isVisible())
         finally:

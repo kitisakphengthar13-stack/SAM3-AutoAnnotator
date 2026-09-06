@@ -90,7 +90,9 @@ class GuiUiAuditTests(unittest.TestCase):
         self.assertTrue(window.dataset_dock.isVisible())
 
     def test_focus_workspace_hides_and_restores_side_panels(self):
-        window = self.make_window()
+        # Wide mode intentionally keeps both persistent panels visible. Narrow mode
+        # has its own responsive contract and auto-collapses Dataset.
+        window = self.make_window(size=(1360, 840))
         self.assertTrue(window.dataset_dock.isVisible())
         self.assertTrue(window.annotation_dock.isVisible())
 
