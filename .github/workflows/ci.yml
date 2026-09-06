@@ -11,8 +11,12 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     env:
       QT_QPA_PLATFORM: offscreen
       CUDA_VISIBLE_DEVICES: ""
@@ -25,6 +29,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install Qt runtime libraries
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends libegl1
@@ -35,6 +40,30 @@ jobs:
       - name: Resolve production requirements
         run: python -m pip install --dry-run -r requirements.txt
       - name: Compile
-        run: python -m compileall -q src tests
-      - name: Unit and offscreen GUI tests
+        run: python -m compileall -q src tests tools
+      - name: Domain and offscreen GUI suite
         run: python -m unittest discover -s tests -v
+      - name: Windows native Qt interaction checks
+        if: runner.os == 'Windows'
+        env:
+          QT_QPA_PLATFORM: windows
+        run: python -m unittest discover -s tests -p test_gui_v3_interactions.py -v
+      - name: Render workstation screens
+        env:
+          QT_QPA_PLATFORM: ${{ runner.os == 'Windows' && 'windows' || 'offscreen' }}
+        run: python tools/render_ui.py --output-dir ui-captures
+      - name: Render at 150 percent scaling
+        env:
+          QT_QPA_PLATFORM: ${{ runner.os == 'Windows' && 'windows' || 'offscreen' }}
+          QT_SCALE_FACTOR: "1.5"
+        run: python tools/render_ui.py --output-dir ui-captures-150
+      - name: Upload rendered UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workstation-ui-${{ runner.os }}
+          path: |
+            ui-captures/
+            ui-captures-150/
+          if-no-files-found: ignore
+          retention-days: 14

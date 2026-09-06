@@ -308,11 +308,22 @@ class WorkstationV3Tests(unittest.TestCase):
         self.add_box()
         self.assertTrue(w.annotation.details_scroll.isVisible())
         self.assertFalse(w.annotation.coordinates_widget.isVisible())
-        QTest.mouseClick(w.annotation.geometry_toggle, Qt.LeftButton)
+        before = self.controller.selected_annotation.box_xyxy
+        QTest.mouseClick(w.annotation.coordinates_button, Qt.LeftButton)
+        self.assertTrue(w.annotation.coordinates_dialog.isVisible())
         self.assertTrue(w.annotation.coordinates_widget.isVisible())
-        self.assertTrue(w.annotation.geometry_toggle.isChecked())
-        QTest.mouseClick(w.annotation.geometry_toggle, Qt.LeftButton)
-        self.assertFalse(w.annotation.coordinates_widget.isVisible())
+        w.annotation.x1_edit.set_value(120)
+        QTest.mouseClick(w.annotation.cancel_coordinates_button, Qt.LeftButton)
+        self.assertFalse(w.annotation.coordinates_dialog.isVisible())
+        self.assertEqual(w.annotation.x1_edit.value(), before[0])
+        self.assertEqual(self.controller.selected_annotation.box_xyxy, before)
+        QTest.mouseClick(w.annotation.coordinates_button, Qt.LeftButton)
+        w.annotation.x1_edit.set_value(125)
+        QTest.mouseClick(w.annotation.apply_box_button, Qt.LeftButton)
+        self.assertFalse(w.annotation.coordinates_dialog.isVisible())
+        self.assertEqual(self.controller.selected_annotation.box_xyxy[0], 125)
+        w.actions.undo.trigger()
+        self.assertEqual(self.controller.selected_annotation.box_xyxy, before)
 
     def test_focus_layout_save_does_not_permanently_hide_panels(self):
         w = self.window

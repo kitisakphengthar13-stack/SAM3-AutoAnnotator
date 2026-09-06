@@ -83,7 +83,9 @@ class AnnotationController:
             )
         else:
             self.update_canvas_hint()
-        host.view.set_message("Box tool enabled." if checked else "Select tool enabled.")
+        host.view.set_message(
+            "Box tool enabled." if checked else "Select tool enabled."
+        )
 
     def update_canvas_hint(self):
         host = self.host
@@ -187,11 +189,13 @@ class AnnotationController:
         try:
             values = host.view.annotation.box_values()
             if not host.presentation.box_fields_changed(annotation, values):
+                host.view.annotation.coordinates_dialog.accept()
                 return
             capture = host.view.history.capture_edit("Edit box")
             edit_annotation_box(image, annotation.id, values)
             host.view.history.commit_edit(capture, annotation.id)
             self.after_annotation_change(annotation.id)
+            host.view.annotation.coordinates_dialog.accept()
             host.view.set_message(
                 "Box updated. Re-segment it before segmentation export."
             )

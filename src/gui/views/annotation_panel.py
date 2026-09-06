@@ -3,6 +3,8 @@ from PySide6.QtCore import QItemSelection, QModelIndex, QSignalBlocker, Qt, Sign
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QDialog,
+    QPushButton,
     QGridLayout,
     QHeaderView,
     QHBoxLayout,
@@ -114,14 +116,28 @@ class AnnotationPanel(QWidget):
         row.addWidget(self.apply_class_button)
         details.addLayout(row)
 
-        self.geometry_toggle = QToolButton()
-        self.geometry_toggle.setText("Box coordinates")
-        self.geometry_toggle.setObjectName("quietButton")
-        self.geometry_toggle.setCheckable(True)
-        self.geometry_toggle.setIcon(icon("next"))
-        self.geometry_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.geometry_toggle.setAccessibleName("Show or hide exact box coordinates")
-        details.addWidget(self.geometry_toggle)
+        self.coordinates_button = QToolButton()
+        self.coordinates_button.setText("Edit coordinates…")
+        self.coordinates_button.setObjectName("quietButton")
+        self.coordinates_button.setIcon(icon("next"))
+        self.coordinates_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.coordinates_button.setAccessibleName("Edit exact box coordinates")
+        details.addWidget(self.coordinates_button)
+        self.coordinates_dialog = QDialog(self)
+        self.coordinates_dialog.setWindowTitle("Box coordinates")
+        self.coordinates_dialog.setWindowModality(Qt.WindowModal)
+        self.coordinates_dialog.resize(420, 300)
+        dialog_layout = QVBoxLayout(self.coordinates_dialog)
+        dialog_layout.setContentsMargins(24, 20, 24, 20)
+        heading = QLabel("Edit box coordinates")
+        heading.setObjectName("dialogTitle")
+        dialog_layout.addWidget(heading)
+        hint = QLabel(
+            "Pixel positions in the source image. Apply updates the box; Cancel discards your changes."
+        )
+        hint.setWordWrap(True)
+        hint.setObjectName("mutedLabel")
+        dialog_layout.addWidget(hint)
         self.coordinates_widget = QWidget()
         coordinates = QGridLayout(self.coordinates_widget)
         coordinates.setContentsMargins(0, 0, 0, 0)
@@ -140,11 +156,19 @@ class AnnotationPanel(QWidget):
                     column,
                 )
                 coordinates.addWidget(field, row_index * 2 + 1, column)
-        self.apply_box_button = action_button(actions.apply_box, stretch=True)
-        coordinates.addWidget(self.apply_box_button, 4, 0, 1, 2)
-        details.addWidget(self.coordinates_widget)
-        self.coordinates_widget.hide()
-        self.geometry_toggle.toggled.connect(self._toggle_coordinates)
+        dialog_layout.addWidget(self.coordinates_widget)
+        footer = QHBoxLayout()
+        footer.addStretch()
+        self.cancel_coordinates_button = QPushButton("Cancel")
+        self.cancel_coordinates_button.clicked.connect(self.coordinates_dialog.reject)
+        footer.addWidget(self.cancel_coordinates_button)
+        self.apply_box_button = action_button(actions.apply_box, "primaryButton")
+        footer.addWidget(self.apply_box_button)
+        dialog_layout.addLayout(footer)
+        self._coordinate_snapshot = None
+        self.coordinates_dialog.rejected.connect(self._restore_coordinates)
+        self.coordinates_dialog.accepted.connect(self._accept_coordinates)
+        self.coordinates_button.clicked.connect(self.show_coordinates)
 
         row = QHBoxLayout()
         self.resegment_button = action_button(actions.resegment, stretch=True)
@@ -169,9 +193,29 @@ class AnnotationPanel(QWidget):
             field.textChanged.connect(lambda _: self.editing_changed.emit())
         self.clear_details()
 
-    def _toggle_coordinates(self, checked):
-        self.coordinates_widget.setVisible(checked)
-        self.geometry_toggle.setIcon(icon("down" if checked else "next"))
+    def show_coordinates(self):
+        fields = (self.x1_edit, self.y1_edit, self.x2_edit, self.y2_edit)
+        if not self.coordinates_dialog.isVisible():
+            self._coordinate_snapshot = [field.text() for field in fields]
+        self.coordinates_dialog.show()
+        self.coordinates_dialog.raise_()
+        self.x1_edit.setFocus()
+        self.x1_edit.selectAll()
+
+    def _restore_coordinates(self):
+        if self._coordinate_snapshot is not None:
+            blockers = self._detail_signal_blockers()
+            for field, value in zip(
+                (self.x1_edit, self.y1_edit, self.x2_edit, self.y2_edit),
+                self._coordinate_snapshot,
+            ):
+                field.setText(value)
+            del blockers
+        self._coordinate_snapshot = None
+        self.editing_changed.emit()
+
+    def _accept_coordinates(self):
+        self._coordinate_snapshot = None
 
     def set_classes(self, prompts):
         current = self.class_combo.currentText()
