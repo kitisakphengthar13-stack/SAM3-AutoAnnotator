@@ -20,7 +20,6 @@ from gui.models.image_list_model import (
     ImageFilterProxyModel,
     ImageListModel,
 )
-from gui.widgets.action_button import action_button
 from gui.widgets.stat_strip import StatStrip
 from gui.widgets.list_delegates import DatasetDelegate
 
@@ -33,6 +32,8 @@ class DatasetPanel(QWidget):
         super().__init__(parent)
         self.setObjectName("datasetPanel")
         self.setMinimumWidth(200)
+        self._status_counts = Counter()
+        self._status_by_image_index = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 8, 10)
@@ -120,37 +121,61 @@ class DatasetPanel(QWidget):
         if current.isValid():
             self.image_selected.emit(int(current.data(IMAGE_INDEX_ROLE)))
 
-    def set_images(self, images, project_name=None):
-        images = list(images)
-        self.reset_filters(notify=False)
-        self.image_model.set_images(images)
-        self.image_summary_label.setText(project_name or "Current project")
-        counts = Counter(item.status for item in images)
+    def _rebuild_status_cache(self, images):
+        self._status_counts = Counter(item.status for item in images)
+        self._status_by_image_index = {
+            item.image_index: item.status for item in images
+        }
+
+    def _update_stats(self):
+        counts = self._status_counts
         self.stat_strip.update_counts(
-            len(images),
+            self.image_model.rowCount(),
             counts[ImageStatus.REVIEWED],
             counts[ImageStatus.EDITED],
             counts[ImageStatus.NOT_PREDICTED] + counts[ImageStatus.ERROR],
         )
+
+    def set_images(self, images, project_name=None):
+        images = list(images)
+        self.reset_filters(notify=False)
+        self._rebuild_status_cache(images)
+        self.image_model.set_images(images)
+        self.image_summary_label.setText(project_name or "Current project")
+        self._update_stats()
         self.filter_changed.emit()
 
     def clear(self):
         self.reset_filters(notify=False)
+        self._status_counts.clear()
+        self._status_by_image_index.clear()
         self.image_model.set_images([])
         self.image_summary_label.setText("No project loaded")
-        self.stat_strip.update_counts(0, 0, 0, 0)
+        self._update_stats()
         self.filter_changed.emit()
 
     def refresh(self, image_index=None):
-        self.image_model.refresh(image_index)
-        images = self.image_model.images
-        counts = Counter(item.status for item in images)
-        self.stat_strip.update_counts(
-            len(images),
-            counts[ImageStatus.REVIEWED],
-            counts[ImageStatus.EDITED],
-            counts[ImageStatus.NOT_PREDICTED] + counts[ImageStatus.ERROR],
-        )
+        if image_index is None:
+            images = self.image_model.images
+            self._rebuild_status_cache(images)
+            refreshed = self.image_model.refresh()
+        else:
+            row = self.image_model.row_for_image_index(image_index)
+            if row < 0:
+                return False
+            image = self.image_model.image_at(row)
+            old_status = self._status_by_image_index.get(image.image_index)
+            new_status = image.status
+            if old_status != new_status:
+                if old_status is not None:
+                    self._status_counts[old_status] -= 1
+                    if self._status_counts[old_status] <= 0:
+                        del self._status_counts[old_status]
+                self._status_counts[new_status] += 1
+                self._status_by_image_index[image.image_index] = new_status
+            refreshed = self.image_model.refresh(image_index)
+        self._update_stats()
+        return refreshed
 
     def selected_image_index(self):
         index = self.image_list.currentIndex()

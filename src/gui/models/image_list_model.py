@@ -61,16 +61,23 @@ _DISPLAY_ROLES = [
 ]
 
 
+def _active_annotation_count(image: ImageRecord) -> int:
+    return sum(1 for annotation in image.annotations if annotation.is_active)
+
+
 class ImageListModel(QAbstractListModel):
     """Qt list model over project images.
 
     ``ImageRecord`` instances remain owned by the project. The model keeps a shallow
-    list copy so domain mutations can be published cheaply with :meth:`refresh`.
+    list copy plus lookup/count caches so per-image refresh stays O(1) with respect
+    to dataset size.
     """
 
     def __init__(self, images: Iterable[ImageRecord] = (), parent=None):
         super().__init__(parent)
         self._images: list[ImageRecord] = []
+        self._row_by_image_index: dict[int, int] = {}
+        self._annotation_count_by_image_index: dict[int, int] = {}
         self.set_images(images)
 
     def rowCount(self, parent=QModelIndex()):
@@ -81,7 +88,10 @@ class ImageListModel(QAbstractListModel):
         if image is None:
             return None
 
-        annotation_count = len(image.active_annotations)
+        annotation_count = self._annotation_count_by_image_index.get(
+            image.image_index,
+            0,
+        )
         status_label = STATUS_LABELS.get(image.status, image.status.value.replace("_", " "))
 
         if role == Qt.ItemDataRole.DisplayRole:
@@ -157,6 +167,12 @@ class ImageListModel(QAbstractListModel):
             raise TypeError("ImageListModel accepts ImageRecord instances only.")
         self.beginResetModel()
         self._images = items
+        self._row_by_image_index = {
+            image.image_index: row for row, image in enumerate(items)
+        }
+        self._annotation_count_by_image_index = {
+            image.image_index: _active_annotation_count(image) for image in items
+        }
         self.endResetModel()
 
     def set_items(self, images: Iterable[ImageRecord]):
@@ -174,14 +190,7 @@ class ImageListModel(QAbstractListModel):
         return None
 
     def row_for_image_index(self, image_index: int):
-        return next(
-            (
-                row
-                for row, image in enumerate(self._images)
-                if image.image_index == image_index
-            ),
-            -1,
-        )
+        return self._row_by_image_index.get(int(image_index), -1)
 
     def index_for_image_index(self, image_index: int):
         row = self.row_for_image_index(image_index)
@@ -195,11 +204,19 @@ class ImageListModel(QAbstractListModel):
         if not self._images:
             return image_index is None
         if image_index is None:
+            self._annotation_count_by_image_index = {
+                image.image_index: _active_annotation_count(image)
+                for image in self._images
+            }
             first_row, last_row = 0, len(self._images) - 1
         else:
             first_row = self.row_for_image_index(image_index)
             if first_row < 0:
                 return False
+            image = self._images[first_row]
+            self._annotation_count_by_image_index[image.image_index] = (
+                _active_annotation_count(image)
+            )
             last_row = first_row
         self.dataChanged.emit(
             self.index(first_row, 0),
