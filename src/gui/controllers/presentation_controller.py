@@ -275,6 +275,7 @@ class PresentationController:
         view = self.host.view
         for widget in (
             view.annotation.class_combo,
+            view.annotation.coordinates_button,
             view.annotation.x1_edit,
             view.annotation.y1_edit,
             view.annotation.x2_edit,

@@ -69,6 +69,16 @@ available desktop. This verifies rendering, not whether a small CI desktop can
 physically fit every requested window. Real SAM3/CUDA inference and the user's
 physical monitor setup still require the intended workstation.
 
+## Native Windows captures
+
+These additional captures came from the Windows Qt platform in
+[run 34006650422](https://github.com/kitisakphengthar13-stack/SAM3-AutoAnnotator/actions/runs/34006650422)
+at `84e21ea`. They show the minimum workstation and Setup at 150% Qt scaling.
+
+![Native Windows minimum workstation](screenshots/windows-workspace-960.png)
+
+![Native Windows Setup at 150 percent](screenshots/windows-setup-150.png)
+
 ## Reproduce the captures
 
 With project dependencies installed, from the repository root:
@@ -83,5 +93,5 @@ Remove-Item Env:QT_SCALE_FACTOR
 
 The tool writes its demonstration project into a temporary directory and captures
 actual widgets. Linux headless execution defaults to Qt offscreen. Screenshots
-committed beside this document use the local Linux Qt renderer; native Windows
-captures are available in the linked CI run's `workstation-ui-Windows` artifact.
+without the `windows-` prefix use the local Linux Qt renderer. The `windows-`
+captures above come from Windows CI; the complete native Windows capture set is available in the linked CI run's `workstation-ui-Windows` artifact.

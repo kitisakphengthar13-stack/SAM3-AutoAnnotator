@@ -27,6 +27,7 @@ class ImageLoadErrorWidget(QWidget):
         title = QLabel("Image could not be displayed")
         title.setObjectName("errorStateTitle")
         title.setAlignment(Qt.AlignCenter)
+        title.setWordWrap(True)
         layout.addWidget(title)
 
         self.detail_label = QLabel()

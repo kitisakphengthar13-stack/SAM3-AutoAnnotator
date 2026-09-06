@@ -8,18 +8,17 @@ The [visual walkthrough](v3-review.md) documents the UI and its actual screensho
 
 ## Recorded evidence
 
-- [GitHub Actions run 34006331642](https://github.com/kitisakphengthar13-stack/SAM3-AutoAnnotator/actions/runs/34006331642)
-  at `85777a7b68d03fae83ab9898cc24a33a24f2e4da`: Linux and Windows passed all
-  169 tests; Windows passed 13 additional native Qt interaction tests. Both runners
+- [GitHub Actions run 34006650422](https://github.com/kitisakphengthar13-stack/SAM3-AutoAnnotator/actions/runs/34006650422)
+  at `84e21ea7f7743ca06c83ef78e667e8ee4da5d46a`: **172 tests passed on Linux
+  and Windows**, plus **16 native Windows interaction tests**. Both runners
   resolved production dependencies, compiled the project, and rendered the app at
   100% and 150% Qt scaling.
-- The first Windows run exposed toolbar overflow at 960 × 620. The corrected bar
-  was then verified in the successful run above. Native Windows screenshots also
-  exposed a narrow confidence field; v3 widens it and tests its text rectangle.
-- Local final implementation: **172 tests passed**, no failures/errors/skips, on
-  PySide6 6.11.2 with Qt offscreen. The added cases cover coordinate keyboard Apply
-  and invalid-draft recovery, pointer-driven Layers visibility, and destination
-  visibility in a short export dialog.
+- The first Windows run exposed toolbar overflow at 960 × 620. Native Windows
+  captures also exposed a narrow confidence field. Both were corrected before
+  the successful run above; export destination visibility and keyboard coordinate
+  Apply are included in the final checks.
+- Local full suite: **172 tests passed**, no failures/errors/skips, on
+  PySide6 6.11.2 with Qt offscreen.
 
 The CI workflow runs the full suite on Linux and Windows and the 16 interaction
 checks again using the Windows native Qt platform. It uploads real app captures
