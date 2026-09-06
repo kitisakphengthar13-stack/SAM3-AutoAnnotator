@@ -2,8 +2,69 @@ from collections import Counter
 from math import isfinite
 
 
+_GEOMETRY_EPSILON = 1e-12
+
+
 def polygon_point_count(annotation):
     return len(annotation.polygon_xyn or [])
+
+
+def _signed_area_twice(points):
+    return sum(
+        x1 * y2 - x2 * y1
+        for (x1, y1), (x2, y2) in zip(points, points[1:] + points[:1])
+    )
+
+
+def _orientation(a, b, c):
+    value = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+    if abs(value) <= _GEOMETRY_EPSILON:
+        return 0
+    return 1 if value > 0 else -1
+
+
+def _on_segment(a, b, point):
+    return (
+        min(a[0], b[0]) - _GEOMETRY_EPSILON
+        <= point[0]
+        <= max(a[0], b[0]) + _GEOMETRY_EPSILON
+        and min(a[1], b[1]) - _GEOMETRY_EPSILON
+        <= point[1]
+        <= max(a[1], b[1]) + _GEOMETRY_EPSILON
+    )
+
+
+def _segments_intersect(a, b, c, d):
+    o1 = _orientation(a, b, c)
+    o2 = _orientation(a, b, d)
+    o3 = _orientation(c, d, a)
+    o4 = _orientation(c, d, b)
+    if o1 != o2 and o3 != o4:
+        return True
+    return any(
+        orientation == 0 and _on_segment(start, end, point)
+        for orientation, start, end, point in (
+            (o1, a, b, c),
+            (o2, a, b, d),
+            (o3, c, d, a),
+            (o4, c, d, b),
+        )
+    )
+
+
+def _has_self_intersection(points):
+    edge_count = len(points)
+    edges = [(points[index], points[(index + 1) % edge_count]) for index in range(edge_count)]
+    for first_index, (a, b) in enumerate(edges):
+        for second_index in range(first_index + 1, edge_count):
+            if second_index in {first_index, first_index + 1}:
+                continue
+            if first_index == 0 and second_index == edge_count - 1:
+                continue
+            c, d = edges[second_index]
+            if _segments_intersect(a, b, c, d):
+                return True
+    return False
 
 
 def validate_polygon_xyn(polygon_xyn, *, require_three=True):
@@ -19,10 +80,20 @@ def validate_polygon_xyn(polygon_xyn, *, require_three=True):
         if not 0.0 <= x <= 1.0 or not 0.0 <= y <= 1.0:
             raise ValueError("Segmentation polygon coordinates must be normalized to [0, 1].")
         points.append([x, y])
+
+    if len(points) > 1 and points[0] == points[-1]:
+        points.pop()
     if require_three and len(points) < 3:
         raise ValueError("Segmentation polygon requires at least three points.")
     if require_three and len({(x, y) for x, y in points}) < 3:
         raise ValueError("Segmentation polygon requires at least three distinct points.")
+    if require_three:
+        if any(current == following for current, following in zip(points, points[1:] + points[:1])):
+            raise ValueError("Segmentation polygon contains a zero-length edge.")
+        if abs(_signed_area_twice(points)) <= _GEOMETRY_EPSILON:
+            raise ValueError("Segmentation polygon has zero area.")
+        if _has_self_intersection(points):
+            raise ValueError("Segmentation polygon self-intersects.")
     return points
 
 
