@@ -1,4 +1,4 @@
-from PySide6.QtCore import QTimer, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -93,7 +93,6 @@ class WorkCanvas(ImageCanvas):
         if not draw:
             self.cancel_drawing()
         super().set_draw_mode(draw)
-        # ScrollHandDrag alone still delivers events to annotation items.
         self.setInteractive(not pan and not draw)
         self.setDragMode(QGraphicsView.ScrollHandDrag if pan else QGraphicsView.NoDrag)
         self.viewport().setCursor(
@@ -327,13 +326,16 @@ class CanvasWorkspace(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
-        QTimer.singleShot(0, self._install_responsive_workspace)
+        self._install_responsive_workspace()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        QTimer.singleShot(0, self._apply_responsive_workspace)
+        if not self._responsive_guard:
+            self._apply_responsive_workspace()
 
     def _install_responsive_workspace(self):
+        if not isValid(self):
+            return
         window = self.window()
         dataset_dock = getattr(window, "dataset_dock", None)
         if dataset_dock is None:
@@ -346,7 +348,11 @@ class CanvasWorkspace(QWidget):
         self._apply_responsive_workspace()
 
     def _dataset_visibility_changed(self, visible):
-        if self._responsive_guard or self._actions.focus_workspace.isChecked():
+        if (
+            not isValid(self)
+            or self._responsive_guard
+            or self._actions.focus_workspace.isChecked()
+        ):
             return
         window = self.window()
         if window.width() < NARROW_WORKSPACE_BREAKPOINT:
@@ -358,6 +364,8 @@ class CanvasWorkspace(QWidget):
             self._responsive_dataset_auto_hidden = False
 
     def _apply_responsive_workspace(self):
+        if not isValid(self) or self._responsive_guard:
+            return
         window = self.window()
         dataset_dock = getattr(window, "dataset_dock", None)
         if dataset_dock is None or self._actions.focus_workspace.isChecked():
