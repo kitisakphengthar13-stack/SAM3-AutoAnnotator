@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, QTimer
 
 from gui.controllers.annotation_controller import AnnotationController
 from gui.controllers.export_controller import ExportController
@@ -52,12 +52,23 @@ class WorkstationController(QObject):
             prediction_service,
             parent=self,
         )
+        self._recovery_timer = QTimer(self)
+        self._recovery_timer.setSingleShot(True)
+        self._recovery_timer.setInterval(5000)
+        self._recovery_timer.timeout.connect(self.projects.save_recovery_snapshot)
 
         self.view.set_controller(self)
         self._connect_actions()
         self._connect_views()
         self._connect_tasks()
         self.presentation.show_initial_state()
+
+    def schedule_recovery(self):
+        if self.project is not None and self.dirty:
+            self._recovery_timer.start()
+
+    def cancel_recovery_schedule(self):
+        self._recovery_timer.stop()
 
     def _connect_actions(self):
         actions = self.view.actions
