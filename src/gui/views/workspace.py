@@ -25,6 +25,7 @@ from gui.widgets.task_progress import TaskProgressWidget
 
 
 NARROW_WORKSPACE_BREAKPOINT = 1120
+MIN_ADAPTIVE_WIDE_WIDTH = 1024
 
 
 class AnnotationLabel(QGraphicsSimpleTextItem):
@@ -333,6 +334,15 @@ class CanvasWorkspace(QWidget):
         if not self._responsive_guard:
             self._apply_responsive_workspace()
 
+    def _responsive_breakpoint(self):
+        window = self.window()
+        screen = window.screen()
+        if screen is None:
+            return NARROW_WORKSPACE_BREAKPOINT
+        available_width = screen.availableGeometry().width()
+        adaptive_ceiling = max(MIN_ADAPTIVE_WIDE_WIDTH, available_width)
+        return min(NARROW_WORKSPACE_BREAKPOINT, adaptive_ceiling)
+
     def _install_responsive_workspace(self):
         if not isValid(self):
             return
@@ -355,7 +365,7 @@ class CanvasWorkspace(QWidget):
         ):
             return
         window = self.window()
-        if window.width() < NARROW_WORKSPACE_BREAKPOINT:
+        if window.width() < self._responsive_breakpoint():
             self._responsive_dataset_override = bool(visible)
             if visible:
                 self._responsive_dataset_auto_hidden = False
@@ -370,7 +380,7 @@ class CanvasWorkspace(QWidget):
         dataset_dock = getattr(window, "dataset_dock", None)
         if dataset_dock is None or self._actions.focus_workspace.isChecked():
             return
-        narrow = window.width() < NARROW_WORKSPACE_BREAKPOINT
+        narrow = window.width() < self._responsive_breakpoint()
         if narrow:
             if (
                 self._responsive_dataset_override is None
