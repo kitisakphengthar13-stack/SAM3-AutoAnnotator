@@ -183,7 +183,7 @@ A project output contains:
 `annotation_state.json` is the manually saved resumable source of truth;
 `annotation_state.recovery.json` is a temporary crash-recovery snapshot. CSV/YOLO
 exports are derived artifacts. Detection labels use current boxes. Segmentation
-labels contain only annotations whose normalized polygon is finite, in range,
+labels contain only annotations whose normalized `polygon_xyn` is finite, in range,
 non-degenerate, non-self-intersecting, and currently valid. Empty images receive an
 empty YOLO detection label file. CSV text fields that begin with common spreadsheet
 formula markers are prefixed with an apostrophe in the CSV artifact; this does not
@@ -232,8 +232,8 @@ until re-segmented.
 GitHub Actions resolves the tested production dependency set and runs the full
 GUI/domain suite on Linux and Windows. A second Windows pass uses the native Qt
 platform for pointer and keyboard interactions. Both runners render the actual app
-at 100% and 150% Qt scaling and upload the captures. See
-[verification](docs/verification.md).
+at 100% and 150%
+Qt scaling and upload the captures. See [verification](docs/verification.md).
 
 CI verifies dependency resolution and the Ultralytics SAM import contract, but does
 not claim a real SAM3/CUDA prediction because hosted runners have no trusted
