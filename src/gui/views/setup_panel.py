@@ -66,6 +66,13 @@ class SetupPanel(QWidget):
         layout.addLayout(row)
         self.model_validation_label = _error()
         layout.addWidget(self.model_validation_label)
+        self.checkpoint_trust_label = QLabel(
+            "Security: only load checkpoint files from sources you trust."
+        )
+        self.checkpoint_trust_label.setObjectName("mutedLabel")
+        self.checkpoint_trust_label.setWordWrap(True)
+        self.checkpoint_trust_label.setAccessibleName("Checkpoint security warning")
+        layout.addWidget(self.checkpoint_trust_label)
         layout.addWidget(_label("CLASSES / TEXT PROMPTS"))
         self.prompts_edit = ClassPromptEditor(visible_rows=5)
         self.prompts_edit.setPlaceholderText("One class per line, or comma-separated")
