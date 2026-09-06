@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -22,6 +22,9 @@ from gui.widgets.empty_state import EmptyStateWidget
 from gui.widgets.image_canvas import ImageCanvas
 from gui.widgets.image_load_error import ImageLoadErrorWidget
 from gui.widgets.task_progress import TaskProgressWidget
+
+
+NARROW_WORKSPACE_BREAKPOINT = 1120
 
 
 class AnnotationLabel(QGraphicsSimpleTextItem):
@@ -193,6 +196,11 @@ class CanvasWorkspace(QWidget):
         super().__init__(parent)
         self.setObjectName("canvasWorkspace")
         self.setMinimumWidth(360)
+        self._actions = actions
+        self._responsive_dataset_auto_hidden = False
+        self._responsive_dataset_override = None
+        self._responsive_dataset_connected = False
+        self._responsive_guard = False
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -316,6 +324,66 @@ class CanvasWorkspace(QWidget):
         actions.pan_tool.toggled.connect(self.canvas.set_pan_mode)
         actions.draw_box.toggled.connect(self.canvas.set_draw_mode)
         self.canvas.set_select_mode(True)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self._install_responsive_workspace)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        QTimer.singleShot(0, self._apply_responsive_workspace)
+
+    def _install_responsive_workspace(self):
+        window = self.window()
+        dataset_dock = getattr(window, "dataset_dock", None)
+        if dataset_dock is None:
+            return
+        if not self._responsive_dataset_connected:
+            dataset_dock.visibilityChanged.connect(
+                self._dataset_visibility_changed
+            )
+            self._responsive_dataset_connected = True
+        self._apply_responsive_workspace()
+
+    def _dataset_visibility_changed(self, visible):
+        if self._responsive_guard or self._actions.focus_workspace.isChecked():
+            return
+        window = self.window()
+        if window.width() < NARROW_WORKSPACE_BREAKPOINT:
+            self._responsive_dataset_override = bool(visible)
+            if visible:
+                self._responsive_dataset_auto_hidden = False
+        else:
+            self._responsive_dataset_override = None
+            self._responsive_dataset_auto_hidden = False
+
+    def _apply_responsive_workspace(self):
+        window = self.window()
+        dataset_dock = getattr(window, "dataset_dock", None)
+        if dataset_dock is None or self._actions.focus_workspace.isChecked():
+            return
+        narrow = window.width() < NARROW_WORKSPACE_BREAKPOINT
+        if narrow:
+            if (
+                self._responsive_dataset_override is None
+                and dataset_dock.isVisible()
+            ):
+                self._responsive_guard = True
+                try:
+                    dataset_dock.hide()
+                finally:
+                    self._responsive_guard = False
+                self._responsive_dataset_auto_hidden = True
+            return
+
+        self._responsive_dataset_override = None
+        if self._responsive_dataset_auto_hidden:
+            self._responsive_guard = True
+            try:
+                dataset_dock.show()
+            finally:
+                self._responsive_guard = False
+        self._responsive_dataset_auto_hidden = False
 
     def _overlay(self, text, checked):
         checkbox = QCheckBox(text)
