@@ -1,30 +1,24 @@
 # Verification
 
-## Branch and implementation
+## Current implementation
 
-`redesign/canvas-workspace-v3` descends from v2 commit
-`9fc70dd72de75e35a5de150665775f99dac6e91e`. Main and v2 are unchanged.
-The [visual walkthrough](v3-review.md) documents the UI and its actual screenshots.
+`main` is the canonical implementation. This document describes verification of the
+current workstation source tree and does not depend on historical development
+branches. The [visual walkthrough](v3-review.md) documents the running UI and its
+reference screenshots.
 
 ## Recorded evidence
 
-- [GitHub Actions run 34006650422](https://github.com/kitisakphengthar13-stack/SAM3-AutoAnnotator/actions/runs/34006650422)
-  at `84e21ea7f7743ca06c83ef78e667e8ee4da5d46a`: **172 tests passed on Linux
-  and Windows**, plus **16 native Windows interaction tests**. Both runners
-  resolved production dependencies, compiled the project, and rendered the app at
-  100% and 150% Qt scaling.
-- The first Windows run exposed toolbar overflow at 960 × 620. Native Windows
-  captures also exposed a narrow confidence field. Both were corrected before
-  the successful run above; export destination visibility and keyboard coordinate
-  Apply are included in the final checks.
-- Local full suite: **172 tests passed**, no failures/errors/skips, on
-  PySide6 6.11.2 with Qt offscreen.
-
-The CI workflow runs the full suite on Linux and Windows and the 16 interaction
-checks again using the Windows native Qt platform. It uploads real app captures
-at both scales as `workstation-ui-Linux` and `workstation-ui-Windows` artifacts.
-Artifacts expire after 14 days; selected reference captures are committed in
-`docs/screenshots/`.
+- [GitHub Actions run 34020065817](https://github.com/kitisakphengthar13-stack/SAM3-AutoAnnotator/actions/runs/34020065817)
+  verified the audited workstation changes on Linux and Windows. The complete
+  domain/offscreen GUI suite passed on both runners, the native Windows interaction
+  suite passed, and both 100% and 150% Qt renders completed successfully.
+- CI resolves the production dependency set, compiles `src`, `tests`, and `tools`,
+  runs the full suite on Linux and Windows, then runs the interaction suite again
+  with the native Windows Qt platform.
+- Rendered UI evidence is uploaded as `workstation-ui-Linux` and
+  `workstation-ui-Windows`. Artifacts expire after 14 days; selected reference
+  captures remain under `docs/screenshots/`.
 
 ## What is covered
 
@@ -33,13 +27,21 @@ Artifacts expire after 14 days; selected reference captures are committed in
 - Object edit history, selection restoration, clean saved-state markers, and
   history barriers for non-undoable project/inference operations.
 - Save/reload/export with actual fixture files, CSV/YOLO output, segmentation
-  omission rules, and preflight opening without writes.
+  omission rules, preflight opening without writes, stale-output replacement, and
+  rollback protection for managed export artifacts.
+- YOLO import validation and rollback, non-finite geometry rejection, source-image
+  dimension mismatch detection, annotation-ID validation, and reset-to-SAM3
+  provenance edge cases.
+- Selected-box re-segmentation through the visual SAM box-prompt path, with spatial
+  result matching so a higher-confidence remote instance is not selected merely
+  because it shares the same semantic concept.
+- Display/decode errors remaining presentation-only rather than rewriting review or
+  annotation workflow state.
 - Whole-button Open/assistance menus, confidence arrow hit targets, coordinate
   Apply/Cancel/keyboard behavior, Layers, dock close/float/restore, Focus Workspace
   persistence, and maximized/fullscreen restoration.
-- Staged Setup, image review/navigation/filtering, image decode/error recovery,
-  background inference task lifecycle/cancellation with fake services, and domain
-  and repository architecture boundaries inherited from v2.
+- Staged Setup, image review/navigation/filtering, background inference task
+  lifecycle/cancellation with fake services, and repository architecture boundaries.
 
 ## Run the checks
 
@@ -62,15 +64,14 @@ The renderer records logical and physical sizes rather than assuming the CI
 machine's desktop resolution. It explicitly sizes reference windows, which may
 extend beyond a small runner desktop while still rendering the complete widget.
 
-## Target workstation checks
+## Verification limits
 
-Real SAM3 inference is not available in this environment: no checkpoint or CUDA
-GPU was supplied. Before claiming a GPU pass, run first prediction, predictor
-reuse, corrected-box re-segmentation, pending batch/cancel, and saved/exported
-output using the intended model and GPU. UI tests use fake inference services;
-reference screenshots use a manual annotation.
+CI does not certify real SAM3 checkpoint execution or CUDA behavior because no
+production checkpoint/GPU is supplied to the workflow. Before claiming a GPU pass,
+exercise first prediction, predictor reuse, selected-box re-segmentation, pending
+batch/cancel, and saved/exported output using the intended model and GPU.
 
 Physical multi-monitor/DPI transitions, native window chrome, and pointer behavior
-on the user's own hardware remain distinct from the Windows runner checks. The
-minimum supported client area is 960 × 620 logical pixels. Direct polygon-point
-editing remains outside this app's feature set; use a corrected box + Re-segment.
+on the target workstation remain distinct from runner checks. The current minimum
+client area is 960 × 620 logical pixels. Direct polygon-point editing remains
+outside this app's feature set; use a corrected box plus Re-segment.
