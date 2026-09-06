@@ -79,6 +79,16 @@ class PresentationController:
         host._current_image_loaded = False
         try:
             width, height = host.view.canvas.load_image(image.image_path)
+            if (
+                image.width is not None
+                and image.height is not None
+                and (image.width, image.height) != (width, height)
+            ):
+                raise ValueError(
+                    f"Source image dimensions changed from {image.width}x{image.height} "
+                    f"to {width}x{height}. Restore the original source image or "
+                    "open the changed file as a new project."
+                )
             host._current_image_loaded = True
             host.view.show_canvas(True)
             if image.width is None or image.height is None:
@@ -90,10 +100,9 @@ class PresentationController:
             )
             return
         except Exception as exc:
-            image.mark_error(exc)
-            self.mark_dirty(refresh=False)
+            # Display/decode failures are transient presentation errors. They must
+            # never rewrite annotation workflow status or dirty saved project state.
             host.view.actions.select_tool.setChecked(True)
-            host.view.dataset.refresh(image.image_index)
             host.view.annotation.set_annotations([])
             host.annotations.clear_selection()
             host.view.canvas_area.canvas_hint.setText(
