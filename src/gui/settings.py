@@ -31,7 +31,7 @@ class UiSettings:
         area = self._responsive_area(window)
         if area is not None:
             area._responsive_dataset_override = None
-            if window.width() < 1120:
+            if window.width() < area._responsive_breakpoint():
                 if window.dataset_dock.isVisible():
                     area._apply_responsive_workspace()
                 else:
@@ -40,6 +40,7 @@ class UiSettings:
                     area._responsive_dataset_auto_hidden = True
             else:
                 area._responsive_dataset_auto_hidden = False
+                area._apply_responsive_workspace()
 
     def save_window(self, window):
         focused = window.actions.focus_workspace.isChecked()
