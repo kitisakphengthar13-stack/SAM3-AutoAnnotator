@@ -1,6 +1,7 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QGraphicsItem,
@@ -335,6 +336,10 @@ class CanvasWorkspace(QWidget):
             self._apply_responsive_workspace()
 
     def _responsive_breakpoint(self):
+        # Offscreen Qt exposes a synthetic desktop that may be smaller than the
+        # explicitly rendered logical window, so it is not a physical constraint.
+        if QApplication.platformName().lower() == "offscreen":
+            return NARROW_WORKSPACE_BREAKPOINT
         window = self.window()
         screen = window.screen()
         if screen is None:
