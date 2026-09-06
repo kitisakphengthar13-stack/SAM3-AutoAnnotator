@@ -8,11 +8,7 @@ boxes, save resumable project state, and export reviewed data.
 This repository is intentionally **GUI-only**. It does not provide a command-line
 annotation workflow.
 
-![Annotation workstation v3](docs/screenshots/workspace-1360.png)
-
-This is **workspace v3**, branched from `redesign/canvas-workspace-v2`.
-See the [visual walkthrough](docs/v3-review.md) for the compact layout, dialogs,
-interaction fixes, and verification evidence.
+![Annotation workstation](docs/screenshots/workspace-1360.png)
 
 ## What it does
 
